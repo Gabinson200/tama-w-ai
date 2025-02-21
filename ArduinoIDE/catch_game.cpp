@@ -8,21 +8,24 @@
 
 // Define some game–specific constants.
 #define MAX_FALLING_OBJECTS 4
-#define MAX_CAUGHT 8
+#define MAX_CAUGHT 4
 
 // IMU init
-LSM6DS3 myIMU(I2C_MODE, 0x6A);    //I2C device address 0x6A
+LSM6DS3 myIMU(I2C_MODE, 0x6A);    // I2C device address 0x6A
 float aX, aY, aZ, gX, gY, gZ;
 
 // Array to hold falling objects.
 static FallingObject fallingObjects[MAX_FALLING_OBJECTS];
-// Array to hold caught SpriteStacks.
-static SpriteStack* caughtObjects[MAX_CAUGHT];
-static int caughtCount = 0;
 
-// Game sequence: player must catch objects in order 1 .. sequenceLength.
-static int nextExpected = 1;
-static const int sequenceLength = 5;
+// Instead of an array of caught SpriteStacks, we use a single SpriteStack to hold caught images.
+// caughtImages will serve as the sprite set for caughtStack.
+static SpriteStack* caughtStack = nullptr;
+static const lv_img_dsc_t* caughtImages[MAX_CAUGHT];
+static int caughtStackCount = 0;
+
+// Game configuration: one of each type (types 0..sequenceLength-1) must be caught.
+static const int sequenceLength = 4;
+static bool caughtTypes[sequenceLength];  // Index 0..sequenceLength-1
 
 // Falling object spawn timing.
 static unsigned long lastFallingSpawnTime = 0;
@@ -41,13 +44,13 @@ void createCatchingGameScreen() {
   // Create a new screen.
   gameScreen = lv_obj_create(NULL);
   lv_obj_remove_style_all(gameScreen);
-  // Call the global gradient function—passing our new screen as parent.
+  // Set a gradient background.
   set_gradient_background(gameScreen);
   
   // Use the global player SpriteStack and position.
   myStack.create(gameScreen);
   g_spritePosition.x = 120;
-  g_spritePosition.y = 210;
+  g_spritePosition.y = 150;  // Draw the player sprite higher on the display.
   myStack.setPosition(g_spritePosition.x, g_spritePosition.y);
   myStack.setZoom(150);
   
@@ -57,14 +60,23 @@ void createCatchingGameScreen() {
     fallingObjects[i].sprite = NULL;
   }
   
-  caughtCount = 0;
-  nextExpected = 1;
+  // Reset caught tracking.
+  caughtStackCount = 0;
+  for (int t = 0; t < sequenceLength; t++) {
+      caughtTypes[t] = false;
+  }
+  // If a previous caughtStack exists, destroy it.
+  if (caughtStack != nullptr) {
+      caughtStack->destroy();
+      delete caughtStack;
+      caughtStack = nullptr;
+  }
   
   lv_scr_load(gameScreen);
   inCatchingGame = true;
   gameStartTime = millis();
   
-  //Call .begin() to configure the IMUs
+  // Configure the IMU.
   if (myIMU.begin() != 0) {
     Serial.println("Device error");
   } else {
@@ -74,71 +86,36 @@ void createCatchingGameScreen() {
   Serial.println("Catching game started!");
 }
 
-//------------------------------------------------------------
-// update_caught_display()
-//  Repositions caught objects (e.g., in a row at the top of the screen).
-//------------------------------------------------------------
-static void update_caught_display() {
-  for (int i = 0; i < caughtCount; i++) {
-    int posX = 40;
-    int posY = 40 - i;
-    caughtObjects[i]->setPosition(posX, posY);
-  }
-}
 
 //------------------------------------------------------------
 // updateCatchingGame()
 //  Updates the catching game each frame (player movement, falling objects, collision).
 //------------------------------------------------------------
 void updateCatchingGame() {
-  // 1. Update the player’s horizontal position using touch input.
-  /*lv_coord_t touchX, touchY;
-  if (validate_touch(&touchX, &touchY)) {
-    if (touchY > 150) {  // Only respond to touches in the lower part of the screen.
-      g_spritePosition.x = touchX;
-      if (g_spritePosition.x < 20) g_spritePosition.x = 20;
-      if (g_spritePosition.x > 220) g_spritePosition.x = 220;
-      myStack.setPosition(g_spritePosition.x, g_spritePosition.y);
-    }
-  }
-  */
-  Serial.print(myIMU.readFloatAccelX(), 3);
-  Serial.print(',');
-  Serial.print(myIMU.readFloatAccelY(), 3);
-  Serial.print(',');
-  Serial.print(myIMU.readFloatAccelZ(), 3);
-  Serial.print(',');
-  Serial.print(myIMU.readFloatGyroX(), 3);
-  Serial.print(',');
-  Serial.print(myIMU.readFloatGyroY(), 3);
-  Serial.print(',');
-  Serial.print(myIMU.readFloatGyroZ(), 3);
-  Serial.println();
 
   gY = myIMU.readFloatAccelX();
-  // Map the angle from -30 to +30 degrees to a movement speed between -5 and 5 pixels/frame.
-  // Adjust these values as needed.
-  float moveSpeed = gY * 10; //map(gY, -1, 1, -10, 10); //gY * 5;//((gY*2*3.14 + 30.0f) / 60.0f) * 10.0f - 5.0f;
-  Serial.println(moveSpeed);
+  // Map the IMU value to a movement speed.
+  float moveSpeed = gY * 10;
+  //Serial.println(moveSpeed);
   g_spritePosition.x += moveSpeed;
 
   if (g_spritePosition.x < 20) g_spritePosition.x = 20;
   if (g_spritePosition.x > 220) g_spritePosition.x = 220;
   myStack.setPosition(g_spritePosition.x, g_spritePosition.y);
 
-  
   // 2. Spawn new falling objects periodically.
   unsigned long now = millis();
   if(now - lastFallingSpawnTime > (unsigned long)fallingSpawnInterval) {
     for (int i = 0; i < MAX_FALLING_OBJECTS; i++) {
       if (!fallingObjects[i].active) {
-        fallingObjects[i].sprite = new SpriteStack(cat_images, 1, i, 3.0, 1.0, 100.0f);
+        int frame_int = random_int(0, sequenceLength-1); // random type and layer image
+        fallingObjects[i].sprite = new SpriteStack(ball_images, 1, frame_int, 3.0, 1.0, 100.0f);
         fallingObjects[i].sprite->create(lv_scr_act());
         fallingObjects[i].x = random_int(20, 220);
         fallingObjects[i].y = -20;
         fallingObjects[i].sprite->setPosition(fallingObjects[i].x, fallingObjects[i].y);
         fallingObjects[i].speed = random_int(2, 5);
-        fallingObjects[i].type = random_int(1, sequenceLength);
+        fallingObjects[i].type = frame_int;
         fallingObjects[i].active = true;
         break;  // Spawn one object per interval.
       }
@@ -153,7 +130,7 @@ void updateCatchingGame() {
       fallingObjects[i].y += fallingObjects[i].speed;
       fallingObjects[i].sprite->setPosition(fallingObjects[i].x, fallingObjects[i].y);
       
-      // If object falls off bottom, delete it.
+      // If the object falls off the bottom, delete it.
       if (fallingObjects[i].y > 240) {
         fallingObjects[i].active = false;
         if(fallingObjects[i].sprite != NULL) {
@@ -164,7 +141,7 @@ void updateCatchingGame() {
         continue;
       }
       
-      // Approximate collision using bounding boxes.
+      // Check for collision using bounding boxes.
       int cat_left   = g_spritePosition.x - 20;
       int cat_right  = g_spritePosition.x + 20;
       int cat_top    = g_spritePosition.y - 20;
@@ -179,35 +156,105 @@ void updateCatchingGame() {
                          cat_bottom < obj_top || cat_top > obj_bottom);
       
       if (collision) {
-        if (fallingObjects[i].type == nextExpected) {
-          Serial.print("Caught correct object of type: ");
-          Serial.println(fallingObjects[i].type);
-          nextExpected++;
-          if (nextExpected > sequenceLength) {
-            Serial.println("Game complete!");
-            inCatchingGame = false;
-            // (Optionally add win animations here.)
-          }
-          if (caughtCount < MAX_CAUGHT) {
-            caughtObjects[caughtCount++] = fallingObjects[i].sprite;
-            update_caught_display();
-          } else {
+        int type = fallingObjects[i].type;
+        if (!caughtTypes[type]) {
+          Serial.print("Caught new object of type: ");
+          Serial.println(type);
+          caughtTypes[type] = true;
+          
+          if (caughtStackCount < MAX_CAUGHT) {
+            // Here we assume that ball_images[type-1] corresponds to the image for this type.
+            caughtImages[type] = ball_images[type];
+            caughtStackCount++;
+            
+            // Delete the falling object's sprite since we don't need it anymore.
             fallingObjects[i].sprite->destroy();
             delete fallingObjects[i].sprite;
+            fallingObjects[i].sprite = NULL;
+            
+            // Re-create caughtStack so its count matches caughtStackCount. No need to delete when the first one is caught
+            if (caughtStack != nullptr && caughtStackCount != 1) {
+              caughtStack->destroy();
+              delete caughtStack;
+              caughtStack = nullptr;
+            }
+            caughtStack = new SpriteStack(caughtImages, 4, 0, 3.0, 4.0, 100.0f);
+            caughtStack->create(lv_scr_act());
+            caughtStack->setPosition(120, 200);
           }
         } else {
-          Serial.print("Caught wrong object of type: ");
-          Serial.println(fallingObjects[i].type);
+          Serial.print("Already caught object of type: ");
+          Serial.println(type);
           fallingObjects[i].sprite->destroy();
           delete fallingObjects[i].sprite;
+          fallingObjects[i].sprite = NULL;
         }
         fallingObjects[i].active = false;
-        fallingObjects[i].sprite = NULL;
       }
     }
   }
-  if(millis() - gameStartTime > 20000){
-    Serial.print("out of time");
-    inCatchingGame = false;
+  
+  // Check if all required types have been caught.
+  if (caughtStackCount >= sequenceLength) {
+    Serial.println("Game complete!");
+    cleanupCatchingGame(); 
+    return;
+  }
+  
+  // Game is 60 seconds long.
+  if(millis() - gameStartTime > 5000){ // 5seconds for testing
+    Serial.print("Out of time");
+    cleanupCatchingGame(); 
+    return;
   }
 }
+
+// ------------------------------------------------------------
+// cleanupCatchingGame()
+//   Safely destroys all game resources and returns to mainScreen.
+// ------------------------------------------------------------
+static void cleanupCatchingGame() {
+    Serial.println("Cleaning up Catching Game and returning to main screen...");
+
+    // 1) Destroy any leftover falling-object sprites.
+    for (int i = 0; i < MAX_FALLING_OBJECTS; i++) {
+        if (fallingObjects[i].sprite != NULL) {
+            fallingObjects[i].sprite->destroy();
+            delete fallingObjects[i].sprite;
+            fallingObjects[i].sprite = NULL;
+        }
+        fallingObjects[i].active = false;
+    }
+
+    // 2) Destroy caughtStack if it exists.
+    if (caughtStack != nullptr) {
+        caughtStack->destroy();
+        delete caughtStack;
+        caughtStack = nullptr;
+    }
+    caughtStackCount = 0;
+
+    // 3) Reset the array that tracks whether each type is caught.
+    for (int t = 0; t < sequenceLength; t++) {
+        caughtTypes[t] = false;
+    }
+
+    // 4) Delete or clean up our gameScreen. 
+    //    Using lv_obj_del() ensures it is removed from LVGL's hierarchy.
+    //    We then set the pointer to NULL as a safety measure.
+    if (gameScreen) {
+        lv_obj_clean(gameScreen); // remove all children
+        //lv_obj_del(gameScreen);
+        //gameScreen = NULL;
+    }
+
+    // 5) Load the original mainScreen from your .ino.
+    //    (You declared 'lv_obj_t * mainScreen = NULL;' in the .ino)
+    if (mainScreen != NULL) {
+        lv_scr_load(mainScreen);
+    }
+
+    // 6) Mark the game as no longer active.
+    inCatchingGame = false;
+}
+

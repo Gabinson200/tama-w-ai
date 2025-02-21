@@ -180,6 +180,7 @@ void updateCatchingGame() {
             }
             caughtStack = new SpriteStack(caughtImages, 4, 0, 3.0, 4.0, 100.0f);
             caughtStack->create(lv_scr_act());
+            caughtStack->setRotation(20, 0, 0);
             caughtStack->setPosition(120, 200);
           }
         } else {
@@ -243,7 +244,7 @@ static void cleanupCatchingGame() {
     //    Using lv_obj_del() ensures it is removed from LVGL's hierarchy.
     //    We then set the pointer to NULL as a safety measure.
     if (gameScreen) {
-        lv_obj_clean(gameScreen); // remove all children
+        //lv_obj_clean(gameScreen); // remove all children
         //lv_obj_del(gameScreen);
         //gameScreen = NULL;
     }
@@ -251,7 +252,12 @@ static void cleanupCatchingGame() {
     // 5) Load the original mainScreen from your .ino.
     //    (You declared 'lv_obj_t * mainScreen = NULL;' in the .ino)
     if (mainScreen != NULL) {
-        lv_scr_load(mainScreen);
+        //lv_scr_load(mainScreen);
+        lv_scr_load_anim(mainScreen, LV_SCR_LOAD_ANIM_NONE, 0, 0, true);
+        // Initialize the cat sprite stack on the main screen.
+        //myStack.create(lv_scr_act());
+        //myStack.setPosition(g_spritePosition.x, g_spritePosition.y);
+        //myStack.setZoom(100);
     }
 
     // 6) Mark the game as no longer active.

@@ -152,6 +152,7 @@ void loop() {
     updateCatchingGame();
   }
 
+
   lv_task_handler();
   delay(16);
 }

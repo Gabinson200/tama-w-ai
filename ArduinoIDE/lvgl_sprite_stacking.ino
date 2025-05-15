@@ -78,9 +78,9 @@ bool targetReached = false;         // True if the sprite has reached its target
 unsigned long targetReachedTime = 0;  // Timestamp when targetReached became true
 
 Point userTarget = {0, 0};
-int spriteFrameCount = sizeof(frog_images) / sizeof(frog_images[0]);
+int spriteFrameCount = sizeof(cat_images) / sizeof(cat_images[0]);
 // Create the player sprite stack using cat_images.
-SpriteStack myStack(frog_images, spriteFrameCount, 0, 3.0, 1.0, 200.0f);
+SpriteStack myStack(cat_images, spriteFrameCount, 0, 3.0, 1.0, 200.0f);
 // Global variable holding the sprite stack's current position.
 Point g_spritePosition = {120, 120};
 swipe_tracker_t spriteSwipeTracker = { SWIPE_IDLE, false, SWIPE_DIR_NONE, 0, 0, 0, 0 };
@@ -108,13 +108,13 @@ static lv_obj_t * bottom_bg = NULL;
 // CANVAS FOR CELESTIAL BODY (SUN / MOON)
 // Using LV_IMG_CF_TRUE_COLOR_ALPHA
 // -------------------------
-#define CELESTIAL_SIZE 60
+#define CELESTIAL_SIZE 40
 static lv_obj_t * celestial_canvas = NULL;
 
 // We'll not manually store the pixel data in a static array.
 // Instead we'll let LVGL handle it by calling lv_canvas_set_buffer.
 // But we *do* need a buffer. In 32-bit color with alpha, each pixel = 4 bytes.
-static lv_color_t celestial_buf[CELESTIAL_SIZE * CELESTIAL_SIZE]; // must be large enough
+static lv_color_t celestial_buf[(4*CELESTIAL_SIZE) * CELESTIAL_SIZE]; // must be large enough
 
 // -------------------------
 // UTILITY FUNCTIONS
@@ -231,106 +231,109 @@ void set_gradient_background(lv_obj_t *parent) {
 void update_celestial_body(lv_obj_t *parent) {
   if (parent == NULL) parent = lv_scr_act();
   
-  // Get current RTC time
   I2C_BM8563_TimeTypeDef timeStruct;
   rtc.getTime(&timeStruct);
   int hour = timeStruct.hours;
   int minute = timeStruct.minutes;
   int total_minutes = hour * 60 + minute;
   
-  // Determine day or night
   bool isDay = (hour >= 6 && hour < 18);
-  
-  // Calculate progress along the 12-hour arc
+  isDay = false; // for testing
+
+  Serial.println("is day?");
+  Serial.println(isDay);
   float t = 0;
   float angle = 0;
   if (isDay) {
-    // Daytime: 6:00(360) -> 18:00(1080)
     t = (total_minutes - 360) / 720.0f;
-    if(t < 0) t = 0; if(t > 1) t = 1;
-    // angle from PI down to 0
-    angle = PI - (t * PI);
+    if(t < 0.0f) t = 0.0f; if(t > 1.0f) t = 1.0f;
+    angle = M_PI - (t * M_PI); // Use M_PI (or PI if your setup defines it)
   } else {
-    // Nighttime: 18:00(1080) -> 6:00 next day(1800)
-    int adj_minutes = (hour < 6) ? (hour + 24)*60 + minute : total_minutes;
-    t = (adj_minutes - 1080) / 720.0f;
-    if(t < 0) t = 0; if(t > 1) t = 1;
-    // angle from 0..PI
-    angle = t * PI;
+    //int adj_minutes = (hour < 6) ? (hour + 24)*60 + minute : total_minutes;
+    //t = (adj_minutes - 1080) / 720.0f;
+    //if(t < 0.0f) t = 0.0f; if(t > 1.0f) t = 1.0f;
+    //angle = t * M_PI; // Use M_PI
+    angle = 0.5 * M_PI; // for testing
   }
   
-  // Arc center & radius
   const int arc_center_x = 120;
   const int arc_center_y = 120;
-  const int arc_radius   = 90;
+  const int arc_radius   = 90; // As per your code
   
-  // Position on the arc
-  int body_x = arc_center_x + (int)(arc_radius * cos(angle));
-  int body_y = arc_center_y - (int)(arc_radius * sin(angle));
+  int body_x = arc_center_x + (int)(arc_radius * cosf(angle));
+  int body_y = arc_center_y - (int)(arc_radius * sinf(angle));
   
-  // Create the canvas if not yet
   if (celestial_canvas == NULL) {
     celestial_canvas = lv_canvas_create(parent);
-    
-    // Using LV_IMG_CF_TRUE_COLOR (hoping your config supports alpha)
     lv_canvas_set_buffer(celestial_canvas,
                          celestial_buf,
                          CELESTIAL_SIZE,
                          CELESTIAL_SIZE,
-                         LV_IMG_CF_TRUE_COLOR);
+                         LV_IMG_CF_TRUE_COLOR_ALPHA);
 
-    // Remove default style
     lv_obj_remove_style_all(celestial_canvas);
-
-    // If needed, bring to foreground or reorder as you like
+    lv_obj_set_style_bg_opa(celestial_canvas, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(celestial_canvas, 0, 0);
+    lv_obj_clear_flag(celestial_canvas, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_move_foreground(celestial_canvas);
   }
   
-  // Day or night colors
   lv_color_t center_color, edge_color;
   if (isDay) {
-    center_color = lv_color_hex(0xFFFF00); // yellow
-    edge_color   = lv_color_hex(0xFFA500); // orange
+    center_color = lv_color_hex(0xFFFF00); // Sun: Yellow center
+    edge_color   = lv_color_hex(0xFFA500); // Sun: Orange edge
   } else {
-    center_color = lv_color_hex(0xFFFFFF); // white
-    edge_color   = lv_color_hex(0xAAAAAA); // gray
+    // Moon: Using lv_color_make for explicit R=G=B greys to ensure neutrality
+    center_color = lv_color_hex(0xE0E0E0); // Light grey (0xE0E0E0)
+    edge_color   = lv_color_hex(0x787878); // Darker grey (0x787878), increased contrast from 0x909090
   }
 
-  // 1) Clear the canvas with full transparency
-  lv_canvas_fill_bg(celestial_canvas, lv_color_black(), LV_OPA_TRANSP);
+  lv_canvas_fill_bg(celestial_canvas, lv_color_white(), 0);
 
-  // 2) Draw the circular gradient
   int c = CELESTIAL_SIZE / 2;
   float max_dist = (float)c;
 
-  for (int y = 0; y < CELESTIAL_SIZE; y++) {
-    for (int x = 0; x < CELESTIAL_SIZE; x++) {
-      int dx = x - c;
-      int dy = y - c;
+  for (int y_px = 0; y_px < CELESTIAL_SIZE; y_px++) {
+    for (int x_px = 0; x_px < CELESTIAL_SIZE; x_px++) {
+      int dx = x_px - c;
+      int dy = y_px - c;
       float dist = sqrtf((float)(dx*dx + dy*dy));
-      if(dist <= max_dist) {
-        float factor = dist / max_dist;  
-        // interpolate center_color -> edge_color
-        lv_color_t px_color = interpolate_color(center_color, edge_color, factor);
 
-        // EXAMPLE: if you want a fade in alpha near the edges:
-        //   alpha = 255 * (1.0f - factor);
-        // else just do alpha=255 for a solid circle
-        uint8_t alpha = (uint8_t)(255 * (1.0f - factor));
+      if (dist <= max_dist) {
+        float base_factor = dist / max_dist;
+        if (base_factor > 1.0f) base_factor = 1.0f; // Clamp base_factor
+
+        // Color gradient factor (non-linear for a more "3D" moon)
+        float color_factor = base_factor;
+        if (!isDay) { // Apply non-linear gradient only for the moon
+            color_factor = powf(base_factor, 1.8f); // Exponent > 1 makes center brighter longer, edges darken faster
+            if (color_factor > 1.0f) color_factor = 1.0f; // Recalmp after powf
+        }
         
-        // Now set the pixel's color and alpha in two calls:
-        lv_canvas_set_px_color(celestial_canvas, x, y, px_color);
-        lv_canvas_set_px_opa(celestial_canvas,  x, y, alpha);
+        lv_color_t px_color = interpolate_color(center_color, edge_color, color_factor);
+        
+        // Alpha gradient factor (linear for soft edges)
+        float alpha_factor = base_factor; 
+        uint8_t alpha;
+        
+        // Ensure the very edge is fully transparent
+        if (alpha_factor >= 0.99f) { 
+            alpha = 0;
+        } else {
+            alpha =  (uint8_t)(255.0f * (1.0f - alpha_factor));
+        }
+        //alpha = (uint8_t)(255.0f);
+
+        lv_canvas_set_px_color(celestial_canvas, x_px, y_px, px_color);
+        lv_canvas_set_px_opa(celestial_canvas, x_px, y_px, alpha);
       }
     }
   }
   
-  // 3) Position the canvas so it's centered at (body_x, body_y)
   lv_obj_set_pos(celestial_canvas, body_x - c, body_y - c);
-
-  // 4) Force LVGL to redraw
   lv_obj_invalidate(celestial_canvas);
 }
+
 
 
 // -------------------------
@@ -571,7 +574,7 @@ void loop() {
   I2C_BM8563_TimeTypeDef timeStruct;
 
   // Get RTC
-  /*
+  
   rtc.getDate(&dateStruct);
   rtc.getTime(&timeStruct);
 
@@ -588,10 +591,10 @@ void loop() {
   Serial.print(", ");
   Serial.print(timeStruct.seconds);
   Serial.println();
-  */
+  
 
   // Update the moving sun/moon.
-  //update_celestial_body(mainScreen);
+  update_celestial_body(mainScreen);
 
   lv_task_handler();
   delay(10);

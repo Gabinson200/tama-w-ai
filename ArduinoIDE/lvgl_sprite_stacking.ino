@@ -114,8 +114,7 @@ static lv_obj_t * celestial_canvas = NULL;
 // We'll not manually store the pixel data in a static array.
 // Instead we'll let LVGL handle it by calling lv_canvas_set_buffer.
 // But we *do* need a buffer. In 32-bit color with alpha, each pixel = 4 bytes.
-static lv_color_t celestial_buf[(4*CELESTIAL_SIZE) * CELESTIAL_SIZE]; // must be large enough
-
+static uint8_t celestial_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR_ALPHA(CELESTIAL_SIZE, CELESTIAL_SIZE)];
 // -------------------------
 // UTILITY FUNCTIONS
 // -------------------------
@@ -158,16 +157,19 @@ Point random_point(int x_min, int x_max, int y_min, int y_max) {
  * @param t Interpolation factor (0.0 to 1.0). 0.0 returns c1, 1.0 returns c2.
  * @return Interpolated lv_color_t.
  */
-lv_color_t interpolate_color(lv_color_t c1, lv_color_t c2, float t) {
-    // Clamp t to the range [0, 1]
-    if (t < 0.0f) t = 0.0f;
-    if (t > 1.0f) t = 1.0f;
+static inline lv_color_t interpolate_color(lv_color_t c1,
+                                           lv_color_t c2,
+                                           float t) {
+  // Clamp t to [0,1]
+  if (t < 0.0f) t = 0.0f;
+  if (t > 1.0f) t = 1.0f;
 
-    // LVGL v8 uses lv_color_mix. For older versions or manual interpolation:
-    uint8_t r = c1.ch.red   + (uint8_t)((float)(c2.ch.red   - c1.ch.red)   * t);
-    uint8_t g = c1.ch.green + (uint8_t)((float)(c2.ch.green - c1.ch.green) * t);
-    uint8_t b = c1.ch.blue  + (uint8_t)((float)(c2.ch.blue  - c1.ch.blue)  * t);
-    return lv_color_make(r, g, b);
+  // Convert t into 0..255 mixer range
+  uint8_t mix = (uint8_t)(t * 255.0f);
+
+  // lv_color_mix(src, dest, opa) does: src*opa/255 + dest*(1-opa/255)
+  // We want at t=0 → c1, at t=1 → c2 ⇒ swap args
+  return lv_color_mix(c2, c1, mix);
 }
 
 // Create a gradient background. If parent is NULL, lv_scr_act() is used.
@@ -238,16 +240,17 @@ void update_celestial_body(lv_obj_t *parent) {
   int total_minutes = hour * 60 + minute;
   
   bool isDay = (hour >= 6 && hour < 18);
-  isDay = false; // for testing
+  isDay = true; // for testing
 
   Serial.println("is day?");
   Serial.println(isDay);
   float t = 0;
   float angle = 0;
   if (isDay) {
-    t = (total_minutes - 360) / 720.0f;
-    if(t < 0.0f) t = 0.0f; if(t > 1.0f) t = 1.0f;
-    angle = M_PI - (t * M_PI); // Use M_PI (or PI if your setup defines it)
+    //t = (total_minutes - 360) / 720.0f;
+    //if(t < 0.0f) t = 0.0f; if(t > 1.0f) t = 1.0f;
+    //angle = M_PI - (t * M_PI); // Use M_PI (or PI if your setup defines it)
+    angle = 0.5 * M_PI; // for testing
   } else {
     //int adj_minutes = (hour < 6) ? (hour + 24)*60 + minute : total_minutes;
     //t = (adj_minutes - 1080) / 720.0f;
@@ -271,61 +274,43 @@ void update_celestial_body(lv_obj_t *parent) {
                          CELESTIAL_SIZE,
                          LV_IMG_CF_TRUE_COLOR_ALPHA);
 
+
+    lv_obj_move_foreground(celestial_canvas);
     lv_obj_remove_style_all(celestial_canvas);
     lv_obj_set_style_bg_opa(celestial_canvas, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(celestial_canvas, 0, 0);
     lv_obj_clear_flag(celestial_canvas, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_move_foreground(celestial_canvas);
   }
   
   lv_color_t center_color, edge_color;
   if (isDay) {
-    center_color = lv_color_hex(0xFFFF00); // Sun: Yellow center
-    edge_color   = lv_color_hex(0xFFA500); // Sun: Orange edge
+    center_color = lv_color_hex(0xFF0011); // Sun: Yellow center
+    edge_color   = lv_color_hex(0xFFFFFF); // Sun: Orange edge
   } else {
     // Moon: Using lv_color_make for explicit R=G=B greys to ensure neutrality
     center_color = lv_color_hex(0xE0E0E0); // Light grey (0xE0E0E0)
     edge_color   = lv_color_hex(0x787878); // Darker grey (0x787878), increased contrast from 0x909090
   }
 
-  lv_canvas_fill_bg(celestial_canvas, lv_color_white(), 0);
+  lv_canvas_fill_bg(celestial_canvas, lv_color_white(), LV_OPA_TRANSP);
 
   int c = CELESTIAL_SIZE / 2;
   float max_dist = (float)c;
 
-  for (int y_px = 0; y_px < CELESTIAL_SIZE; y_px++) {
-    for (int x_px = 0; x_px < CELESTIAL_SIZE; x_px++) {
-      int dx = x_px - c;
-      int dy = y_px - c;
-      float dist = sqrtf((float)(dx*dx + dy*dy));
-
-      if (dist <= max_dist) {
-        float base_factor = dist / max_dist;
-        if (base_factor > 1.0f) base_factor = 1.0f; // Clamp base_factor
-
-        // Color gradient factor (non-linear for a more "3D" moon)
-        float color_factor = base_factor;
-        if (!isDay) { // Apply non-linear gradient only for the moon
-            color_factor = powf(base_factor, 1.8f); // Exponent > 1 makes center brighter longer, edges darken faster
-            if (color_factor > 1.0f) color_factor = 1.0f; // Recalmp after powf
-        }
-        
-        lv_color_t px_color = interpolate_color(center_color, edge_color, color_factor);
-        
-        // Alpha gradient factor (linear for soft edges)
-        float alpha_factor = base_factor; 
-        uint8_t alpha;
-        
-        // Ensure the very edge is fully transparent
-        if (alpha_factor >= 0.99f) { 
-            alpha = 0;
-        } else {
-            alpha =  (uint8_t)(255.0f * (1.0f - alpha_factor));
-        }
-        //alpha = (uint8_t)(255.0f);
-
-        lv_canvas_set_px_color(celestial_canvas, x_px, y_px, px_color);
-        lv_canvas_set_px_opa(celestial_canvas, x_px, y_px, alpha);
+  // Define how many pixels thick the fade band should be
+  for(int y = 0; y < CELESTIAL_SIZE; y++) {
+    for(int x = 0; x < CELESTIAL_SIZE; x++) {
+      int dx = x - c;
+      int dy = y - c;
+      float dist = sqrtf(dx*dx + dy*dy);
+      if(dist <= max_dist) {
+        float f = dist / max_dist;
+        if(f > 1) f = 1;
+        float cf = isDay ? f : powf(f, 1.8f);
+        lv_color_t col = interpolate_color(center_color, edge_color, cf);
+        uint8_t alpha = (uint8_t)(255 * (1.0f - f));
+        lv_canvas_set_px_color(celestial_canvas, x, y, col);
+        lv_canvas_set_px_opa(celestial_canvas, x, y, alpha);
       }
     }
   }
@@ -578,7 +563,7 @@ void loop() {
   rtc.getDate(&dateStruct);
   rtc.getTime(&timeStruct);
 
-
+ 
   Serial.print(dateStruct.year);
   Serial.print(", ");
   Serial.print(dateStruct.month);

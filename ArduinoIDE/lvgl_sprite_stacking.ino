@@ -76,13 +76,14 @@ unsigned long userTouchStartTime = 0; // Timestamp when userTouchActive became t
 bool inCatchingGame = false;        // True if the catching game is currently active
 bool targetReached = false;         // True if the sprite has reached its target in userControlActive mode
 unsigned long targetReachedTime = 0;  // Timestamp when targetReached became true
+int animIndex = 0;
 
 Point userTarget = {0, 0};
 int spriteFrameCount = sizeof(cat_images) / sizeof(cat_images[0]);
 // Create the player sprite stack using cat_images.
-SpriteStack myStack(cat_images, spriteFrameCount, 0, 3.0, 1.0, 200.0f);
+SpriteStack myStack(cat_images, spriteFrameCount, 0, 3.0, 1.0, 100.0f);
 // Global variable holding the sprite stack's current position.
-Point g_spritePosition = {120, 120};
+Point g_spritePosition = {120, 160};
 swipe_tracker_t spriteSwipeTracker = { SWIPE_IDLE, false, SWIPE_DIR_NONE, 0, 0, 0, 0 };
 float swipeRollOffset = 0;
 
@@ -180,17 +181,17 @@ static inline lv_color_t interpolate_color(lv_color_t c1,
 void render_scene(lv_obj_t* parent = nullptr) {
   if (!scene_ready) {
     if (!parent) parent = lv_scr_act();
-    // Create sky panel, top 100 pixels of screen
+    // Create sky panel, top 120 pixels of screen
     top_bg = lv_obj_create(parent);
     lv_obj_remove_style_all(top_bg);
-    lv_obj_set_size(top_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) * 100 / 240);
+    lv_obj_set_size(top_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) * 120 / 240);
     lv_obj_align(top_bg, LV_ALIGN_TOP_LEFT, 0, 0);
 
-    // Create ground panel, bottom 140 pixels of screen
+    // Create ground panel, bottom 120 pixels of screen
     bottom_bg = lv_obj_create(parent);
     lv_obj_remove_style_all(bottom_bg);
-    lv_obj_set_size(bottom_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) * 140 / 240);
-    lv_obj_align(bottom_bg, LV_ALIGN_TOP_LEFT, 0, lv_obj_get_height(parent) * 100 / 240);
+    lv_obj_set_size(bottom_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) * 120 / 240);
+    lv_obj_align(bottom_bg, LV_ALIGN_TOP_LEFT, 0, lv_obj_get_height(parent) * 120 / 240);
 
     // Create canvas for sun/moon
     celestial_canvas = lv_canvas_create(parent);
@@ -246,7 +247,7 @@ void render_scene(lv_obj_t* parent = nullptr) {
     t = constrain((adj - 1080) / 720.0f, 0.0f, 1.0f);
   }
   float angle = isDay ? (PI * (1 - t)) : (PI * t);
-  const int cx = 120, cy = 100, r = 80;
+  const int cx = 120, cy = 120, r = 80;
   int bx = cx + cosf(angle) * r;
   int by = cy - sinf(angle) * r;
 
@@ -295,10 +296,10 @@ bool moveSpriteToTarget(SpriteStack &sprite_stack, const Point &target) {
   static int delay_ms = 0;
 
   if (!moving) {
-    delay_ms = map(g_spritePosition.y, 100, 200, 200, 50);  // Adjust mapping as desired.
+    delay_ms = map(g_spritePosition.y, 120, 200, 200, 50);  // Adjust mapping as desired.
     float angle = degrees(atan2((float)(target.y - g_spritePosition.y),
                                  (float)(target.x - g_spritePosition.x))) + 270;
-    float stretch = map(g_spritePosition.y, 100, 200, 0, -40);
+    float stretch = map(g_spritePosition.y, 120, 200, 0, -40);
     sprite_stack.setRotation(stretch, 0, angle);
     moving = true;
   }
@@ -314,7 +315,7 @@ bool moveSpriteToTarget(SpriteStack &sprite_stack, const Point &target) {
       // Target reached; update global position and turn toward the user.
       g_spritePosition = target;
       sprite_stack.setPosition(g_spritePosition.x, g_spritePosition.y);
-      float finalStretch = map(g_spritePosition.y, 100, 200, 0, -40);
+      float finalStretch = map(g_spritePosition.y, 120, 200, 0, -40);
       // Assume the user is at bottom-center (120,240)
       sprite_stack.setRotation(finalStretch, 0, 0); // face user
       moving = false;  // Movement complete.
@@ -329,9 +330,9 @@ bool moveSpriteToTarget(SpriteStack &sprite_stack, const Point &target) {
 
       float newAngle = degrees(atan2((float)(target.y - g_spritePosition.y),
                                       (float)(target.x - g_spritePosition.x))) + 270;
-      float newStretch = map(g_spritePosition.y, 100, 200, 0, -40);
+      float newStretch = map(g_spritePosition.y, 120, 200, 0, -40);
       sprite_stack.setRotation(newStretch, 0, newAngle);
-      float size_mult = map(g_spritePosition.y, 100, 200, 100, 250);
+      float size_mult = map(g_spritePosition.y, 120, 200, 100, 250);
       sprite_stack.setZoom(size_mult);
     }
   }
@@ -347,11 +348,11 @@ void walk_to_random_point(SpriteStack &sprite_stack) {
   const int margin = 40;  // Use a margin so the sprite stays visible.
 
   if (!moving) {
-    dest = random_point(margin, 240 - margin, 100, 200);
-    delay_ms = map(g_spritePosition.y, 100, 200, 200, 50);
+    dest = random_point(margin, 240 - margin, 120, 200);
+    delay_ms = map(g_spritePosition.y, 120, 200, 200, 50);
     float angle = degrees(atan2((float)(dest.y - g_spritePosition.y),
                                  (float)(dest.x - g_spritePosition.x))) + 270;
-    float stretch = map(g_spritePosition.y, 100, 200, 0, -40);
+    float stretch = map(g_spritePosition.y, 120, 200, 0, -40);
     sprite_stack.setRotation(stretch, 0, angle);
     moving = true;
   }
@@ -377,9 +378,9 @@ void walk_to_random_point(SpriteStack &sprite_stack) {
 
       float newAngle = degrees(atan2((float)(dest.y - g_spritePosition.y),
                                       (float)(dest.x - g_spritePosition.x))) + 270;
-      float newStretch = map(g_spritePosition.y, 100, 200, 0, -40);
+      float newStretch = map(g_spritePosition.y, 120, 200, 0, -40);
       sprite_stack.setRotation(newStretch, 0, newAngle);
-      float size_mult = map(g_spritePosition.y, 100, 200, 100, 250);
+      float size_mult = map(g_spritePosition.y, 120, 200, 100, 250);
       sprite_stack.setZoom(size_mult);
     }
   }
@@ -393,7 +394,7 @@ void test_user_and_random_walk(SpriteStack &sprite_stack) {
   // Only check for user input if not already in user control mode.
   if (!userControlActive) {
     // Accept touches only within the defined valid region.
-    if (isTouch && (touchX >= 40 && touchX <= 200) && (touchY >= 100 && touchY <= 200)) {
+    if (isTouch && (touchX >= 40 && touchX <= 200) && (touchY >= 120 && touchY <= 200)) {
       if (!userTouchActive) {
         // New valid touch: record start time and target.
         userTouchActive = true;
@@ -445,11 +446,11 @@ void test_user_and_random_walk(SpriteStack &sprite_stack) {
 
 
 RotationAnimation myRotationAnim(myStack, 0, 360, 3000, 100);
-NoNoAnimation NoNoAnim(myStack, -30, 30, 3000, 1000);
-NodAnimation NodAnim(myStack, -15, 0, 2000, 500);
+NoNoAnimation NoNoAnim(myStack, -30, 30, 3000, 100);
+NodAnimation NodAnim(myStack, -15, 0, 3000, 500);
 DanceAnimation DanceAnim(myStack, -30, 0, 3000, 100);
-DeselectionAnimation DeseAnim(myStack, -10, 10, 2000, 100);
-SelectionAnimation SelectAnim(myStack, 0, 360, 1000, 100);
+DeselectionAnimation DeseAnim(myStack, -10, 10, 3000, 100);
+SelectionAnimation SelectAnim(myStack, 0, 360, 3000, 100);
 
 // -------------------------
 // SETUP & LOOP
@@ -473,7 +474,7 @@ void setup() {
   // Initialize the cat sprite stack on the main screen.
   myStack.create(lv_scr_act());
   myStack.setPosition(g_spritePosition.x, g_spritePosition.y);
-  myStack.setZoom(100);
+  myStack.setZoom(200);
 
   // Seed the random number generator.
   randomSeed(analogRead(0));
@@ -486,7 +487,7 @@ void loop() {
   //test_sprite_stack(myStack);
 
   // uncomment to test the walking functionality
-  test_user_and_random_walk(myStack);
+  //test_user_and_random_walk(myStack);
 
 
   // If user touches the center region (adjust parameters as needed) and game is not active, start the catching game.
@@ -494,21 +495,30 @@ void loop() {
   //  createCatchingGameScreen();
   //}
 
-
-  /*
-  if (get_touch_in_area_center(120, 120, 50, 50, true) && !inCatchingGame) {
-    Serial.println("SpriteStack pressed! Starting rotation animation.");
-    DanceAnim.start();
-    //SelectAnim.start();
-    // Start the catching game.
+  
+  if (get_touch_in_area_center(120, 160, 25, 25, true) && !inCatchingGame) {
+    Serial.println("SpriteStack pressed! Starting animation.");
+    switch (animIndex) {
+      case 0: DanceAnim.start();        break;
+      case 1: myRotationAnim.start();   break;
+      case 2: NoNoAnim.start();         break;
+      case 3: NodAnim.start();          break;
+      case 4: DeseAnim.start();         break;
+      case 5: SelectAnim.start();       break;
+    }
+    animIndex = (animIndex + 1) % 6;
+  
     //createCatchingGameScreen();
   }
 
-  if(DanceAnim.isActive()){
-    DanceAnim.update();
-    //SelectAnim.update();
-  }
-  */
+  // Update any active animation
+  if (DanceAnim.isActive())    DanceAnim.update();
+  if (myRotationAnim.isActive()) myRotationAnim.update();
+  if (NoNoAnim.isActive())     NoNoAnim.update();
+  if (NodAnim.isActive())      NodAnim.update();
+  if (DeseAnim.isActive())     DeseAnim.update();
+  if (SelectAnim.isActive())   SelectAnim.update();
+  
 
   // If in catching game, update its logic.
   //if (inCatchingGame) {

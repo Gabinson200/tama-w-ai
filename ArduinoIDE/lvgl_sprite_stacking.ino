@@ -180,13 +180,13 @@ static inline lv_color_t interpolate_color(lv_color_t c1,
 void render_scene(lv_obj_t* parent = nullptr) {
   if (!scene_ready) {
     if (!parent) parent = lv_scr_act();
-    // Create sky panel
+    // Create sky panel, top 100 pixels of screen
     top_bg = lv_obj_create(parent);
     lv_obj_remove_style_all(top_bg);
     lv_obj_set_size(top_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) * 100 / 240);
     lv_obj_align(top_bg, LV_ALIGN_TOP_LEFT, 0, 0);
 
-    // Create ground panel
+    // Create ground panel, bottom 140 pixels of screen
     bottom_bg = lv_obj_create(parent);
     lv_obj_remove_style_all(bottom_bg);
     lv_obj_set_size(bottom_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) * 140 / 240);
@@ -206,12 +206,12 @@ void render_scene(lv_obj_t* parent = nullptr) {
   // Get current time
   I2C_BM8563_TimeTypeDef ts;
   rtc.getTime(&ts);
-  //int hour    = ts.hours;
-  //int minute  = ts.minutes;
+  int hour    = ts.hours;
+  int minute  = ts.minutes;
 
   //for testing
-  int hour    = 1;
-  int minute  = 0;
+  //int hour    = 1;
+  //int minute  = 0;
 
   int tot_min = hour * 60 + minute;
 
@@ -251,8 +251,8 @@ void render_scene(lv_obj_t* parent = nullptr) {
   int by = cy - sinf(angle) * r;
 
   // Determine sun/moon colors
-  lv_color_t col_center = isDay ? lv_color_hex(0xFFFF00) : lv_color_hex(0xF4FFB0);
-  lv_color_t col_edge   = isDay ? lv_color_hex(0xFFCC00) : lv_color_hex(0xC0D14D);
+  lv_color_t col_center = isDay ? lv_color_hex(0xFFFF00) : lv_color_hex(0xFFFFCC);
+  lv_color_t col_edge   = isDay ? lv_color_hex(0xFFCC00) : lv_color_hex(0xFFFF99);
 
   // Clear canvas
   lv_canvas_fill_bg(celestial_canvas, lv_color_white(), LV_OPA_TRANSP);

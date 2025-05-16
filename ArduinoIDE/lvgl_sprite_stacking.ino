@@ -101,15 +101,17 @@ lv_obj_t * mainScreen = NULL;
 // BACKGROUND OBJECTS
 // We keep them global so we can control z-order easily if needed
 // -------------------------
-static lv_obj_t * top_bg = NULL;
-static lv_obj_t * bottom_bg = NULL;
+static lv_obj_t * top_bg = nullptr;
+static lv_obj_t * bottom_bg = nullptr;
+static lv_obj_t* celestial_canvas= nullptr;
+static bool scene_ready       = false;
 
 // -------------------------
 // CANVAS FOR CELESTIAL BODY (SUN / MOON)
 // Using LV_IMG_CF_TRUE_COLOR_ALPHA
 // -------------------------
 #define CELESTIAL_SIZE 40
-static lv_obj_t * celestial_canvas = NULL;
+//static lv_obj_t * celestial_canvas = NULL;
 
 // We'll not manually store the pixel data in a static array.
 // Instead we'll let LVGL handle it by calling lv_canvas_set_buffer.
@@ -172,150 +174,108 @@ static inline lv_color_t interpolate_color(lv_color_t c1,
   return lv_color_mix(c2, c1, mix);
 }
 
-// Create a gradient background. If parent is NULL, lv_scr_act() is used.
-void set_gradient_background(lv_obj_t *parent) {
-  if (parent == NULL) parent = lv_scr_act();
-  lv_coord_t parent_w = lv_obj_get_width(parent);
-  lv_coord_t parent_h = lv_obj_get_height(parent);
-  if (parent_w == 0) parent_w = 240;
-  if (parent_h == 0) parent_h = 240;
 
-  // Determine if it's night based on RTC time.
-  I2C_BM8563_TimeTypeDef timeStruct;
-  rtc.getTime(&timeStruct);
-  bool isNight = (timeStruct.hours >= 18 || timeStruct.hours < 6);
 
-  isNight = true; // for testing
+// updates background and sun / moon
+void render_scene(lv_obj_t* parent = nullptr) {
+  if (!scene_ready) {
+    if (!parent) parent = lv_scr_act();
+    // Create sky panel
+    top_bg = lv_obj_create(parent);
+    lv_obj_remove_style_all(top_bg);
+    lv_obj_set_size(top_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) * 100 / 240);
+    lv_obj_align(top_bg, LV_ALIGN_TOP_LEFT, 0, 0);
 
-  // Top (sky) background.
-  lv_obj_t * top_bg = lv_obj_create(parent);
-  lv_obj_remove_style_all(top_bg);
-  lv_obj_set_size(top_bg, parent_w, parent_h * 100 / 240);
-  lv_obj_align(top_bg, LV_ALIGN_TOP_LEFT, 0, 0);
+    // Create ground panel
+    bottom_bg = lv_obj_create(parent);
+    lv_obj_remove_style_all(bottom_bg);
+    lv_obj_set_size(bottom_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) * 140 / 240);
+    lv_obj_align(bottom_bg, LV_ALIGN_TOP_LEFT, 0, lv_obj_get_height(parent) * 100 / 240);
 
-  if(isNight){
-    lv_obj_set_style_bg_color(top_bg, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_grad_color(top_bg, lv_color_hex(0x2F4F4F), 0);
-  }else{
-    lv_obj_set_style_bg_color(top_bg, lv_color_hex(0x4682B4), 0);
-    lv_obj_set_style_bg_grad_color(top_bg, lv_color_hex(0x87CEEB), 0);
+    // Create canvas for sun/moon
+    celestial_canvas = lv_canvas_create(parent);
+    lv_canvas_set_buffer(celestial_canvas, celestial_buf,
+                         CELESTIAL_SIZE, CELESTIAL_SIZE,
+                         LV_IMG_CF_TRUE_COLOR_ALPHA);
+    lv_obj_remove_style_all(celestial_canvas);
+    lv_obj_set_style_bg_opa(celestial_canvas, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(celestial_canvas, 0, 0);
+    scene_ready = true;
   }
+
+  // Get current time
+  I2C_BM8563_TimeTypeDef ts;
+  rtc.getTime(&ts);
+  //int hour    = ts.hours;
+  //int minute  = ts.minutes;
+
+  //for testing
+  int hour    = 1;
+  int minute  = 0;
+
+  int tot_min = hour * 60 + minute;
+
+  // Determine day/night
+  bool isDay = (hour >= 6 && hour < 19);
+
+  // Update sky gradient
+  lv_color_t sky_top   = isDay ? lv_color_hex(0x4682B4) : lv_color_hex(0x000000);
+  lv_color_t sky_bot   = isDay ? lv_color_hex(0x87CEEB) : lv_color_hex(0x2F4F4F);
+  lv_obj_set_style_bg_color(top_bg, sky_top, 0);
+  lv_obj_set_style_bg_grad_color(top_bg, sky_bot, 0);
   lv_obj_set_style_bg_grad_dir(top_bg, LV_GRAD_DIR_VER, 0);
   lv_obj_set_style_bg_opa(top_bg, LV_OPA_COVER, 0);
   lv_obj_move_background(top_bg);
 
-  // Bottom (grass) background.
-  lv_obj_t * bottom_bg = lv_obj_create(parent);
-  lv_obj_remove_style_all(bottom_bg);
-  lv_obj_set_size(bottom_bg, parent_w, parent_h * 140 / 240);
-  lv_obj_align(bottom_bg, LV_ALIGN_TOP_LEFT, 0, parent_h * 100 / 240);
-
-  if(isNight){
-    lv_obj_set_style_bg_color(bottom_bg, lv_color_hex(0x2E8B57), 0);
-    lv_obj_set_style_bg_grad_color(bottom_bg, lv_color_hex(0x006400), 0);
-  }else{
-    lv_obj_set_style_bg_color(bottom_bg, lv_color_hex(0x3CB371), 0);
-    lv_obj_set_style_bg_grad_color(bottom_bg, lv_color_hex(0x98FB98), 0);
-  }
+  // Update ground gradient
+  lv_color_t grd_top   = isDay ? lv_color_hex(0x3CB371) : lv_color_hex(0x2E8B57);
+  lv_color_t grd_bot   = isDay ? lv_color_hex(0x98FB98) : lv_color_hex(0x006400);
+  lv_obj_set_style_bg_color(bottom_bg, grd_top, 0);
+  lv_obj_set_style_bg_grad_color(bottom_bg, grd_bot, 0);
   lv_obj_set_style_bg_grad_dir(bottom_bg, LV_GRAD_DIR_VER, 0);
   lv_obj_set_style_bg_opa(bottom_bg, LV_OPA_COVER, 0);
   lv_obj_move_background(bottom_bg);
-}
 
-// -------------------------
-// NEW FUNCTION: UPDATE CELESTIAL BODY (SUN / MOON)
-// -------------------------
-//
-// This function creates (if needed) and updates a canvas that displays either a radial
-// gradient sun (daytime) or a radial gradient moon (nighttime) which moves along an arc.
-// The arc is computed using the current RTC time.
-// The sun is drawn for times between 6:00 and 18:00; otherwise the moon is drawn.
-void update_celestial_body(lv_obj_t *parent) {
-  if (parent == NULL) parent = lv_scr_act();
-  
-  I2C_BM8563_TimeTypeDef timeStruct;
-  rtc.getTime(&timeStruct);
-  int hour = timeStruct.hours;
-  int minute = timeStruct.minutes;
-  int total_minutes = hour * 60 + minute;
-  
-  bool isDay = (hour >= 6 && hour < 18);
-  isDay = true; // for testing
-
-  Serial.println("is day?");
-  Serial.println(isDay);
-  float t = 0;
-  float angle = 0;
+  // Compute sun/moon position along arc
+  float t;
   if (isDay) {
-    //t = (total_minutes - 360) / 720.0f;
-    //if(t < 0.0f) t = 0.0f; if(t > 1.0f) t = 1.0f;
-    //angle = M_PI - (t * M_PI); // Use M_PI (or PI if your setup defines it)
-    angle = 0.5 * M_PI; // for testing
+    t = constrain((tot_min - 360) / 720.0f, 0.0f, 1.0f);
+    t = 1 - t; // invert for morning->evening
   } else {
-    //int adj_minutes = (hour < 6) ? (hour + 24)*60 + minute : total_minutes;
-    //t = (adj_minutes - 1080) / 720.0f;
-    //if(t < 0.0f) t = 0.0f; if(t > 1.0f) t = 1.0f;
-    //angle = t * M_PI; // Use M_PI
-    angle = 0.5 * M_PI; // for testing
+    int adj = (hour < 6) ? (hour + 24)*60 + minute : tot_min;
+    t = constrain((adj - 1080) / 720.0f, 0.0f, 1.0f);
   }
-  
-  const int arc_center_x = 120;
-  const int arc_center_y = 120;
-  const int arc_radius   = 90; // As per your code
-  
-  int body_x = arc_center_x + (int)(arc_radius * cosf(angle));
-  int body_y = arc_center_y - (int)(arc_radius * sinf(angle));
-  
-  if (celestial_canvas == NULL) {
-    celestial_canvas = lv_canvas_create(parent);
-    lv_canvas_set_buffer(celestial_canvas,
-                         celestial_buf,
-                         CELESTIAL_SIZE,
-                         CELESTIAL_SIZE,
-                         LV_IMG_CF_TRUE_COLOR_ALPHA);
+  float angle = isDay ? (PI * (1 - t)) : (PI * t);
+  const int cx = 120, cy = 100, r = 80;
+  int bx = cx + cosf(angle) * r;
+  int by = cy - sinf(angle) * r;
 
+  // Determine sun/moon colors
+  lv_color_t col_center = isDay ? lv_color_hex(0xFFFF00) : lv_color_hex(0xF4FFB0);
+  lv_color_t col_edge   = isDay ? lv_color_hex(0xFFCC00) : lv_color_hex(0xC0D14D);
 
-    lv_obj_move_foreground(celestial_canvas);
-    lv_obj_remove_style_all(celestial_canvas);
-    lv_obj_set_style_bg_opa(celestial_canvas, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(celestial_canvas, 0, 0);
-    lv_obj_clear_flag(celestial_canvas, LV_OBJ_FLAG_CLICKABLE);
-  }
-  
-  lv_color_t center_color, edge_color;
-  if (isDay) {
-    center_color = lv_color_hex(0xFF0011); // Sun: Yellow center
-    edge_color   = lv_color_hex(0xFFFFFF); // Sun: Orange edge
-  } else {
-    // Moon: Using lv_color_make for explicit R=G=B greys to ensure neutrality
-    center_color = lv_color_hex(0xE0E0E0); // Light grey (0xE0E0E0)
-    edge_color   = lv_color_hex(0x787878); // Darker grey (0x787878), increased contrast from 0x909090
-  }
-
+  // Clear canvas
   lv_canvas_fill_bg(celestial_canvas, lv_color_white(), LV_OPA_TRANSP);
 
-  int c = CELESTIAL_SIZE / 2;
-  float max_dist = (float)c;
-
-  // Define how many pixels thick the fade band should be
-  for(int y = 0; y < CELESTIAL_SIZE; y++) {
-    for(int x = 0; x < CELESTIAL_SIZE; x++) {
-      int dx = x - c;
-      int dy = y - c;
+  // Draw radial body
+  int radius = 10 + (int)(10 * sinf(PI * t));
+  for (int y = 0; y < CELESTIAL_SIZE; y++) {
+    for (int x = 0; x < CELESTIAL_SIZE; x++) {
+      int dx = x - radius;
+      int dy = y - radius;
       float dist = sqrtf(dx*dx + dy*dy);
-      if(dist <= max_dist) {
-        float f = dist / max_dist;
-        if(f > 1) f = 1;
-        float cf = isDay ? f : powf(f, 1.8f);
-        lv_color_t col = interpolate_color(center_color, edge_color, cf);
-        uint8_t alpha = (uint8_t)(255 * (1.0f - f));
-        lv_canvas_set_px_color(celestial_canvas, x, y, col);
-        lv_canvas_set_px_opa(celestial_canvas, x, y, alpha);
+      if (dist <= radius) {
+        float f = dist / radius;
+        lv_color_t c = interpolate_color(col_center, col_edge, powf(f, 1.5f));
+        lv_canvas_set_px_color(celestial_canvas, x, y, c);
+        lv_canvas_set_px_opa(celestial_canvas, x, y, 255 * (1 - f));
       }
     }
   }
-  
-  lv_obj_set_pos(celestial_canvas, body_x - c, body_y - c);
+
+  // Position canvas
+  lv_obj_set_pos(celestial_canvas, bx - radius, by - radius);
+  lv_obj_move_foreground(celestial_canvas);
   lv_obj_invalidate(celestial_canvas);
 }
 
@@ -507,7 +467,7 @@ void setup() {
   // Create and load the main screen.
   mainScreen = lv_obj_create(NULL);
   lv_obj_remove_style_all(mainScreen);
-  set_gradient_background(mainScreen);
+  //set_gradient_background(mainScreen);
   lv_scr_load(mainScreen);
 
   // Initialize the cat sprite stack on the main screen.
@@ -559,7 +519,7 @@ void loop() {
   I2C_BM8563_TimeTypeDef timeStruct;
 
   // Get RTC
-  
+  /*
   rtc.getDate(&dateStruct);
   rtc.getTime(&timeStruct);
 
@@ -576,10 +536,12 @@ void loop() {
   Serial.print(", ");
   Serial.print(timeStruct.seconds);
   Serial.println();
-  
+  */
 
   // Update the moving sun/moon.
-  update_celestial_body(mainScreen);
+  //update_celestial_body(mainScreen);
+
+  render_scene(mainScreen);
 
   lv_task_handler();
   delay(10);

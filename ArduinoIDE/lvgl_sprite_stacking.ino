@@ -52,6 +52,17 @@ const lv_img_dsc_t *ball_images[] = {
   &bb015
 };
 
+#include "burger.h"
+LV_IMG_DECLARE(burger_1); LV_IMG_DECLARE(burger_2); LV_IMG_DECLARE(burger_3);
+LV_IMG_DECLARE(burger_4); LV_IMG_DECLARE(burger_5); LV_IMG_DECLARE(burger_6);
+LV_IMG_DECLARE(burger_7); LV_IMG_DECLARE(burger_8);
+
+// Array of pointers to the burger images
+const lv_img_dsc_t *burger_images[] = {
+  &burger_1, &burger_2, &burger_3, &burger_4, &burger_5,
+  &burger_6, &burger_7, &burger_8
+};
+
 // Frog sprite images
 #include "frog.h" // Contains the actual image data
 LV_IMG_DECLARE(frog_1); LV_IMG_DECLARE(frog_2);
@@ -63,6 +74,17 @@ const lv_img_dsc_t *frog_images[] = {
   &frog_1, &frog_2, &frog_3, &frog_4, &frog_5,
   &frog_6, &frog_7
 };
+
+
+
+#include "bed.h"
+LV_IMG_DECLARE(bed_1); LV_IMG_DECLARE(bed_2); LV_IMG_DECLARE(bed_3);
+LV_IMG_DECLARE(bed_4); LV_IMG_DECLARE(bed_5); LV_IMG_DECLARE(bed_6);
+
+const lv_img_dsc_t *bed_images[] = {
+  &bed_1, &bed_2, &bed_3, &bed_4, &bed_5, &bed_6
+};
+
 
 
 // -------------------------
@@ -79,11 +101,18 @@ unsigned long targetReachedTime = 0;  // Timestamp when targetReached became tru
 int animIndex = 0;
 
 Point userTarget = {0, 0};
-int spriteFrameCount = sizeof(cat_images) / sizeof(cat_images[0]);
+int spriteFrameCount = sizeof(frog_images) / sizeof(frog_images[0]);
+int burgerFrameCount = sizeof(burger_images) / sizeof(burger_images[0]);
+int bedFrameCount = sizeof(bed_images) / sizeof(bed_images[0]);
+
 // Create the player sprite stack using cat_images.
-SpriteStack myStack(cat_images, spriteFrameCount, 0, 3.0, 1.0, 100.0f);
+SpriteStack myStack(frog_images, spriteFrameCount, 0, 3.0, 1.0, 100.0f);
+SpriteStack burgerStack(burger_images, burgerFrameCount, 0, 2.0, 1.0, 100.0f);
+SpriteStack bedStack(bed_images, bedFrameCount, 0, 3.0, 1.0, 100.0f);
+
 // Global variable holding the sprite stack's current position.
 Point g_spritePosition = {120, 160};
+Point burgerPosition = {80, 140};
 swipe_tracker_t spriteSwipeTracker = { SWIPE_IDLE, false, SWIPE_DIR_NONE, 0, 0, 0, 0 };
 float swipeRollOffset = 0;
 
@@ -444,13 +473,41 @@ void test_user_and_random_walk(SpriteStack &sprite_stack) {
 }
 
 
-
-RotationAnimation myRotationAnim(myStack, 0, 360, 3000, 100);
+RotationAnimation MyRotationAnim(myStack, 0, 360, 3000, 100);
 NoNoAnimation NoNoAnim(myStack, -30, 30, 3000, 100);
 NodAnimation NodAnim(myStack, -15, 0, 3000, 500);
 DanceAnimation DanceAnim(myStack, -30, 0, 3000, 100);
 DeselectionAnimation DeseAnim(myStack, -10, 10, 3000, 100);
 SelectionAnimation SelectAnim(myStack, 0, 360, 3000, 100);
+
+void test_anims() {
+  // 1) detect a new tap (touch-down edge)
+  static bool wasTouched = false;
+  bool isTouched = get_touch_in_area_center(120, 160, 25, 25, true);
+
+  if (isTouched && !wasTouched && !inCatchingGame) {
+    Serial.println("SpriteStack pressed! Starting animation.");
+    switch (animIndex) {
+      case 0: DanceAnim.start();      break;
+      case 1: MyRotationAnim.start(); break;
+      case 2: NoNoAnim.start();       break;
+      case 3: NodAnim.start();        break;
+      case 4: DeseAnim.start();       break;
+      case 5: SelectAnim.start();     break;
+    }
+    animIndex = (animIndex + 1) % 6;
+  }
+  wasTouched = isTouched;
+
+  // 2) drive the persistent animations
+  if (DanceAnim.isActive())       DanceAnim.update();
+  if (MyRotationAnim.isActive())  MyRotationAnim.update();
+  if (NoNoAnim.isActive())        NoNoAnim.update();
+  if (NodAnim.isActive())         NodAnim.update();
+  if (DeseAnim.isActive())        DeseAnim.update();
+  if (SelectAnim.isActive())      SelectAnim.update();
+}
+
 
 // -------------------------
 // SETUP & LOOP
@@ -476,6 +533,14 @@ void setup() {
   myStack.setPosition(g_spritePosition.x, g_spritePosition.y);
   myStack.setZoom(200);
 
+  burgerStack.create(lv_scr_act());
+  burgerStack.setPosition(burgerPosition.x, burgerPosition.y);
+  burgerStack.setZoom(100);
+
+  bedStack.create(lv_scr_act());
+  bedStack.setPosition(180, 140);
+  bedStack.setZoom(200);
+
   // Seed the random number generator.
   randomSeed(analogRead(0));
 
@@ -496,28 +561,7 @@ void loop() {
   //}
 
   
-  if (get_touch_in_area_center(120, 160, 25, 25, true) && !inCatchingGame) {
-    Serial.println("SpriteStack pressed! Starting animation.");
-    switch (animIndex) {
-      case 0: DanceAnim.start();        break;
-      case 1: myRotationAnim.start();   break;
-      case 2: NoNoAnim.start();         break;
-      case 3: NodAnim.start();          break;
-      case 4: DeseAnim.start();         break;
-      case 5: SelectAnim.start();       break;
-    }
-    animIndex = (animIndex + 1) % 6;
-  
-    //createCatchingGameScreen();
-  }
-
-  // Update any active animation
-  if (DanceAnim.isActive())    DanceAnim.update();
-  if (myRotationAnim.isActive()) myRotationAnim.update();
-  if (NoNoAnim.isActive())     NoNoAnim.update();
-  if (NodAnim.isActive())      NodAnim.update();
-  if (DeseAnim.isActive())     DeseAnim.update();
-  if (SelectAnim.isActive())   SelectAnim.update();
+  test_anims();
   
 
   // If in catching game, update its logic.

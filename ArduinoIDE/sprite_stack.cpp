@@ -16,7 +16,7 @@ SpriteStack::SpriteStack(const lv_img_dsc_t** sprites, int count, int starting_i
 // Create image objects and add them to the LVGL parent.
 void SpriteStack::create(lv_obj_t *parent) {
     for (int j = 0; j < num_slices; j++) {
-        int i = (starting_index + j) % spriteFrameCount;  // Correct index calculation.
+        int i = (starting_index + j) % num_slices;  // Correct index calculation.
         images[j] = lv_img_create(parent);
         lv_obj_set_parent(images[j], parent);
         lv_img_set_src(images[j], sprite_set[i]);
@@ -110,7 +110,7 @@ void SpriteStack::update() {
     float center_projection = 1.0f / (camera_distance);
 
     for (int j = 0; j < num_slices; j++) {
-        int i = (starting_index + j) % spriteFrameCount;  // Correct index
+        int i = (starting_index + j) % num_slices;  // Correct index
         lv_obj_t* img = images[j];
         const lv_img_dsc_t* sprite = sprite_set[i];
 

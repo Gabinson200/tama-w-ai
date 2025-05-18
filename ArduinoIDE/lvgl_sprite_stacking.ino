@@ -356,7 +356,7 @@ void walk_to_random_point(SpriteStack &sprite_stack, Point &currentPos) {
 
   if (!walking_randomly_active_flag) {
     current_random_destination = random_point(margin, lv_disp_get_hor_res(NULL) - margin, 
-                                       lv_disp_get_ver_res(NULL) / 2, lv_disp_get_ver_res(NULL)); 
+                                       lv_disp_get_ver_res(NULL) / 2, lv_disp_get_ver_res(NULL) - margin); 
     walking_randomly_active_flag = true;
     Serial.print("walk_to_random_point: New random destination: X="); Serial.print(current_random_destination.x); Serial.print(", Y="); Serial.println(current_random_destination.y);
   }
@@ -405,7 +405,7 @@ void test_user_and_random_walk(SpriteStack &sprite_stack, Point &currentPos) {
 
     // User destination setting logic - only if not in interrupt animation
     if (!myStackIsPerformingInterruptAnim) {
-        if (isTouch && touchX >= 0 && touchY >= 120) { 
+        if (isTouch && (touchX >= 0 && touchX <= 200) && (touchY >= 120 && touchY <= 220)) { 
             if (!touch_is_being_held) { 
                 touch_is_being_held = true;
                 touch_hold_start_time = millis();

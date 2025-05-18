@@ -244,6 +244,23 @@
         dirty = false;
     }
 
+    /**
+    * @brief Moves all LVGL image objects of this sprite stack to the foreground
+    * of their parent. This is used for Z-ordering multiple SpriteStack instances.
+    */
+    void SpriteStack::bringToForeground() {
+        if (!created || !images) return;
+
+        // Iterate through all image layers of this stack
+        for (int i = 0; i < num_slices; ++i) {
+            if (images[i]) {
+                // lv_obj_move_foreground() makes this specific image layer
+                // the last child to be drawn on its parent, effectively placing it on top.
+                lv_obj_move_foreground(images[i]);
+            }
+        }
+    }
+
     // test_sprite_stack function
     void test_sprite_stack(SpriteStack &my_stack ){
         static int phase = 0;

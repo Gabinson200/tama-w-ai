@@ -69,6 +69,8 @@
 
         void update();
         bool isDirty() const;
+
+        void bringToForeground();
     };
 
     void test_sprite_stack(SpriteStack &my_stack);

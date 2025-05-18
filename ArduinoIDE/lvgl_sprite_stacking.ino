@@ -105,9 +105,9 @@ int burgerFrameCount = sizeof(burger_images) / sizeof(burger_images[0]);
 int bedFrameCount = sizeof(bed_images) / sizeof(bed_images[0]);
 int ballFrameCount = sizeof(ball_images) / sizeof(ball_images[0]);
 
-SpriteStack myStack(cat_images, catFrameCount, 0, 3.0, 1.0, 100.0f);
-SpriteStack burgerStack(burger_images, burgerFrameCount, 0, 2.0, 1.0, 100.0f);
-SpriteStack bedStack(bed_images, bedFrameCount, 0, 3.0, 1.0, 100.0f);
+SpriteStack myStack(cat_images, catFrameCount, 0, 1.0, 1.0, 150.0f);
+SpriteStack burgerStack(burger_images, burgerFrameCount, 0, 1.0, 1.0, 100.0f);
+SpriteStack bedStack(bed_images, bedFrameCount, 0, 1.0, 1.0, 100.0f);
 
 SpriteStack* sortable_stacks[] = { &myStack, &burgerStack, &bedStack };
 const int NUM_SORTABLE_STACKS = sizeof(sortable_stacks) / sizeof(sortable_stacks[0]);
@@ -335,7 +335,9 @@ bool moveSpriteToTarget(SpriteStack &sprite_stack, Point &currentPos, const Poin
             float new_roll_angle_deg = degrees(new_angle_rad) + 270;
             sprite_stack.setRotation(0, 0, new_roll_angle_deg);
             
-            float size_mult = map(currentPos.y, 120, 200, 100, 200); 
+            float base_zoom = sprite_stack.getInitialZoomPercent();
+            float size_mult = map(currentPos.y, 120, 200, base_zoom, base_zoom + 100); 
+          
             sprite_stack.setZoom(size_mult);
         }
     }
@@ -557,7 +559,7 @@ void setup() {
 
   bedStack.create(mainScreen);
   bedStack.setPosition(bedPosition.x, bedPosition.y);
-  bedStack.setZoom(100.0f);
+  bedStack.setZoom(200.0f);
   Serial.println("bedStack created.");
   
   randomSeed(analogRead(A0)); 

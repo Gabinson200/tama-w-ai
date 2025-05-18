@@ -88,7 +88,7 @@ bool hasUserDestination = false;
 Point currentUserDestination = {0,0};           
 bool inPostUserTargetCooldown = false;          
 unsigned long postUserTargetCooldownStartTime = 0;
-const unsigned long USER_DESTINATION_HOLD_DURATION = 1000; 
+const unsigned long USER_DESTINATION_HOLD_DURATION = 2000; 
 const unsigned long POST_USER_TARGET_COOLDOWN_DURATION = 7000; 
 
 // --- For Interrupt Animation on myStack ---
@@ -132,12 +132,12 @@ static uint8_t celestial_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR_ALPHA(CELESTIAL_SIZE,
 void reset_walk_to_random_point_state(); // Forward declaration
 
 // Animation objects for myStack (used for interrupt)
-RotationAnimation MyRotationAnim(myStack, 0, 360, 2000, 0); // No delay for interrupt
+RotationAnimation MyRotationAnim(myStack, 0, 360, 3000, 0); // No delay for interrupt
 NoNoAnimation NoNoAnim(myStack, -25, 25, 1500, 0);
-NodAnimation NodAnim(myStack, -10, 0, 1500, 0);
-DanceAnimation DanceAnim(myStack, -20, 0, 2500, 0);
-DeselectionAnimation DeseAnim(myStack, -15, 15, 1000, 0);
-SelectionAnimation SelectAnim(myStack, 0, 360, 1500, 0);
+NodAnimation NodAnim(myStack, -10, 0, 3000, 0);
+DanceAnimation DanceAnim(myStack, -45, 45, 3000, 0);
+DeselectionAnimation DeseAnim(myStack, -15, 15, 3000, 0);
+SelectionAnimation SelectAnim(myStack, 0, 360, 3000, 0);
 
 
 // -------------------------
@@ -228,9 +228,9 @@ void render_scene(lv_obj_t* parent = nullptr) {
   const int sky_height = lv_obj_get_height(top_bg); 
   
   const int orbit_center_x = screen_width / 2;
-  const int orbit_radius_x = screen_width / 2 + CELESTIAL_SIZE / 2; 
+  const int orbit_radius_x = screen_width / 2;
   const int orbit_radius_y = sky_height * 0.8f; 
-  const int horizon_y_offset = sky_height - CELESTIAL_SIZE /2 ; 
+  const int horizon_y_offset = sky_height; 
 
   int celestial_pos_x = orbit_center_x - cosf(celestial_angle_rad) * orbit_radius_x;
   int celestial_pos_y = horizon_y_offset - sinf(celestial_angle_rad) * orbit_radius_y;
@@ -239,7 +239,7 @@ void render_scene(lv_obj_t* parent = nullptr) {
   lv_color_t body_edge_color   = is_daytime ? lv_color_hex(0xFFCC00) : lv_color_hex(0xB0B0B0);
 
   lv_canvas_fill_bg(celestial_canvas, lv_color_black(), LV_OPA_TRANSP); 
-  int body_radius = CELESTIAL_SIZE / 2 - 2; 
+  int body_radius = CELESTIAL_SIZE / 2; 
   
   for (int y_px = 0; y_px < CELESTIAL_SIZE; y_px++) {
     for (int x_px = 0; x_px < CELESTIAL_SIZE; x_px++) {
@@ -276,39 +276,51 @@ bool moveSpriteToTarget(SpriteStack &sprite_stack, Point &currentPos, const Poin
     static unsigned long lastUpdate = 0;
     const int delay_ms = 30; 
 
+    // Check if the externally supplied 'target' has changed.
     if (internal_target_memory.x != target.x || internal_target_memory.y != target.y) {
-        moving_to_current_target = false; 
-        internal_target_memory = target;  
-        lastUpdate = millis() - delay_ms; 
+        moving_to_current_target = false; // Force re-initialization for the new target
+        internal_target_memory = target;  // Remember this new target
+        lastUpdate = millis() - delay_ms; // Prime lastUpdate to allow immediate processing of the new target
         Serial.print("moveSpriteToTarget: New target acquired: X="); Serial.print(target.x); Serial.print(", Y="); Serial.println(target.y);
     }
 
+    // Initialize movement (set rotation and flag) only if not already moving towards the current internal_target_memory
     if (!moving_to_current_target) {
-        float angle_rad = atan2((float)(internal_target_memory.y - currentPos.y),
-                                (float)(internal_target_memory.x - currentPos.x));
-        float roll_angle_deg = degrees(angle_rad) + 270; 
-        
-        sprite_stack.setRotation(0, 0, roll_angle_deg); 
+        // Only set rotation if we are not already at the target (to avoid spinning in place)
+        float initial_dx = internal_target_memory.x - currentPos.x;
+        float initial_dy = internal_target_memory.y - currentPos.y;
+        if (sqrt(initial_dx * initial_dx + initial_dy * initial_dy) >= 2.0f) { // Threshold to prevent spinning
+            float angle_rad = atan2(initial_dy, initial_dx);
+            float roll_angle_deg = degrees(angle_rad) + 270; 
+            sprite_stack.setRotation(0, 0, roll_angle_deg); 
+        } else {
+            sprite_stack.setRotation(0,0,0); // Already at target, face forward
+        }
         moving_to_current_target = true;
-        Serial.print("moveSpriteToTarget: Initializing/Continuing movement to X="); Serial.print(internal_target_memory.x); Serial.print(", Y="); Serial.println(internal_target_memory.y);
+        // lastUpdate is already primed if it's a new target.
+        // If it's resuming after reaching a target, this block is re-entered,
+        // and lastUpdate from the previous cycle is used, which is fine.
+        // Serial.print("moveSpriteToTarget: Initializing movement to X="); Serial.print(internal_target_memory.x); Serial.print(", Y="); Serial.println(internal_target_memory.y);
     }
 
     unsigned long now = millis();
-    if (now - lastUpdate >= (unsigned long)delay_ms) {
+    // Only proceed with movement steps if we are flagged as moving and enough time has passed
+    if (moving_to_current_target && (now - lastUpdate >= (unsigned long)delay_ms)) {
         lastUpdate = now;
         float dx = internal_target_memory.x - currentPos.x;
         float dy = internal_target_memory.y - currentPos.y;
         float dist = sqrt(dx * dx + dy * dy);
 
-        if (dist < 2.0f) { 
+        if (dist < 2.0f) { // Threshold for arrival
             currentPos = internal_target_memory; 
             sprite_stack.setPosition(currentPos.x, currentPos.y);
             sprite_stack.setRotation(0, 0, 0); 
-            moving_to_current_target = false; 
-            internal_target_memory = {-1,-1}; 
+            moving_to_current_target = false; // Stop movement, target reached
+            // internal_target_memory = {-1,-1}; // Optionally clear to signify completion for this specific target
             // Serial.println("moveSpriteToTarget: Target reached.");
             return true; 
         } else {
+            // Continue moving
             float step = 1.5f; 
             float step_x = (dx / dist) * step;
             float step_y = (dy / dist) * step;
@@ -317,6 +329,7 @@ bool moveSpriteToTarget(SpriteStack &sprite_stack, Point &currentPos, const Poin
             currentPos.y += round(step_y);
             sprite_stack.setPosition(currentPos.x, currentPos.y);
 
+            // Continuously update angle to face the target
             float new_angle_rad = atan2((float)(internal_target_memory.y - currentPos.y),
                                      (float)(internal_target_memory.x - currentPos.x));
             float new_roll_angle_deg = degrees(new_angle_rad) + 270;
@@ -326,8 +339,9 @@ bool moveSpriteToTarget(SpriteStack &sprite_stack, Point &currentPos, const Poin
             sprite_stack.setZoom(size_mult);
         }
     }
-    return false; 
+    return false; // Not yet at the target or not time to update
 }
+
 
 static bool walking_randomly_active_flag = false; 
 static Point current_random_destination;
@@ -342,7 +356,7 @@ void walk_to_random_point(SpriteStack &sprite_stack, Point &currentPos) {
 
   if (!walking_randomly_active_flag) {
     current_random_destination = random_point(margin, lv_disp_get_hor_res(NULL) - margin, 
-                                       lv_disp_get_ver_res(NULL) / 2, lv_disp_get_ver_res(NULL) - margin - 20); 
+                                       lv_disp_get_ver_res(NULL) / 2, lv_disp_get_ver_res(NULL)); 
     walking_randomly_active_flag = true;
     Serial.print("walk_to_random_point: New random destination: X="); Serial.print(current_random_destination.x); Serial.print(", Y="); Serial.println(current_random_destination.y);
   }
@@ -378,7 +392,7 @@ void updateSpriteStackZOrder() {
 
 void test_user_and_random_walk(SpriteStack &sprite_stack, Point &currentPos) {
     // If this function is called for myStack AND it's performing an interrupt animation, skip movement.
-    if (&sprite_stack == &myStack && myStackIsPerformingInterruptAnim) {
+    if (myStackIsPerformingInterruptAnim) {
         Serial.println("test_user_and_random_walk: Bypassed for myStack due to interrupt animation.");
         return; 
     }
@@ -390,49 +404,41 @@ void test_user_and_random_walk(SpriteStack &sprite_stack, Point &currentPos) {
     static unsigned long touch_hold_start_time = 0;
 
     // User destination setting logic - only if not in interrupt animation
-    if (&sprite_stack == &myStack && !myStackIsPerformingInterruptAnim) {
+    if (!myStackIsPerformingInterruptAnim) {
         if (isTouch && touchX >= 0 && touchY >= 120) { 
             if (!touch_is_being_held) { 
                 touch_is_being_held = true;
                 touch_hold_start_time = millis();
             } else { 
                 if (millis() - touch_hold_start_time >= USER_DESTINATION_HOLD_DURATION) { 
-                    if (!hasUserDestination || currentUserDestination.x != touchX || currentUserDestination.y != touchY) {
-                        Serial.print("New user destination set for myStack: X="); Serial.print(touchX); Serial.print(", Y="); Serial.println(touchY);
-                        currentUserDestination.x = touchX;
-                        currentUserDestination.y = touchY;
-                        hasUserDestination = true;        
-                        inPostUserTargetCooldown = false; 
-                        reset_walk_to_random_point_state(); 
-                    }
+                    Serial.print("New user destination set for myStack: X="); Serial.print(touchX); Serial.print(", Y="); Serial.println(touchY);
+                    currentUserDestination.x = touchX;
+                    currentUserDestination.y = touchY;
+                    hasUserDestination = true;        
+                    inPostUserTargetCooldown = false; 
+                    reset_walk_to_random_point_state(); 
                 }
-            }
-        } else { 
-            if (touch_is_being_held) { 
-                touch_is_being_held = false;
             }
         }
     }
 
 
     // Movement execution logic
-    if (hasUserDestination && (&sprite_stack == &myStack) ) { // Only myStack follows user destination for now
+    if (hasUserDestination) {
         if (moveSpriteToTarget(sprite_stack, currentPos, currentUserDestination)) {
             Serial.println("myStack reached User destination.");
             hasUserDestination = false;             
             inPostUserTargetCooldown = true;        
             postUserTargetCooldownStartTime = millis();
         }
-    } else if (inPostUserTargetCooldown && (&sprite_stack == &myStack)) {
+    } else if (inPostUserTargetCooldown) {
         if (millis() - postUserTargetCooldownStartTime >= POST_USER_TARGET_COOLDOWN_DURATION) {
             Serial.println("myStack Post-user target cooldown finished.");
             inPostUserTargetCooldown = false;
         }
     } else {
         // Only myStack does random walk if not doing user dest or in cooldown
-        if (&sprite_stack == &myStack) {
-             walk_to_random_point(sprite_stack, currentPos);
-        }
+        walk_to_random_point(sprite_stack, currentPos);
         // Other sprites could have their own independent movement logic here if needed
     }
 }

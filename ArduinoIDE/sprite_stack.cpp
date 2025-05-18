@@ -16,6 +16,7 @@
         depth_scale(scale),
         layer_offset(offset),
         current_zoom_percent(initial_zoom_percent),
+        init_zoom_percent(initial_zoom_percent),
         created(false),
         camera_distance(200.0f),
         dirty(true) {
@@ -96,6 +97,10 @@
 
     float SpriteStack::getZoomPercent() const {
       return current_zoom_percent;
+    }
+
+    float SpriteStack::getInitialZoomPercent() const {
+      return init_zoom_percent;
     }
 
     uint16_t SpriteStack::getLvglZoom() const {

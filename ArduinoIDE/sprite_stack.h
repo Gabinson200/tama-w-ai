@@ -12,7 +12,10 @@
     };
 
     // DEG_TO_RAD is defined in Arduino.h (via Common.h), so we don't define it here.
-
+    /**
+    * @param scale how intense the top down view animations will be
+    * @param camera_distance how much the z position of a slice affects its rotated_x and rotated_y offsets during pitch and yaw.
+    */
     class SpriteStack {
       private:
         lv_obj_t **images = nullptr;
@@ -25,6 +28,7 @@
         float layer_offset;
         uint16_t base_zoom_lvgl; // LVGL zoom (256 = 100%)
         float current_zoom_percent; // Store the percentage for comparison
+        float init_zoom_percent;
 
         bool created = false;
         float camera_distance = 200.0f;
@@ -53,6 +57,7 @@
 
         void setZoom(float percent);
         float getZoomPercent() const;
+        float getInitialZoomPercent() const;
         uint16_t getLvglZoom() const;
 
         void setPosition(float x, float y);

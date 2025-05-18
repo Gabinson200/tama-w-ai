@@ -472,9 +472,9 @@ void test_anims() {
   static bool wasTouched_anim_trigger = false; // Renamed to be specific
   Point stackPos = myStack.getPosition();
   // Use a slightly larger, more reliable hit area for tapping the sprite
-  bool isTouched_on_myStack = get_touch_in_area_center(stackPos.x, stackPos.y, 
-                                                       myStack.getZoomPercent() * 0.1, // Approx 10% of current visual width
-                                                       myStack.getZoomPercent() * 0.2, // Approx 20% of current visual height
+  bool isTouched_on_myStack = get_touch_in_area_center(stackPos.x-10, stackPos.y-20, 
+                                                       myStack.getZoomPercent() * 0.08, // Approx 8% of current visual width
+                                                       myStack.getZoomPercent() * 0.12, // Approx 12% of current visual height
                                                        true); 
 
   if (isTouched_on_myStack && !wasTouched_anim_trigger && !inCatchingGame) { 

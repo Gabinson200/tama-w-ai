@@ -88,21 +88,14 @@ bool hasUserDestination = false;
 Point currentUserDestination = {0,0};           
 bool inPostUserTargetCooldown = false;          
 unsigned long postUserTargetCooldownStartTime = 0;
-const unsigned long USER_DESTINATION_HOLD_DURATION = 2000; 
+const unsigned long USER_DESTINATION_HOLD_DURATION = 5000; 
 const unsigned long POST_USER_TARGET_COOLDOWN_DURATION = 7000; 
-static bool g_hold_in_progress               = false;
-static unsigned long g_hold_start_ts = 0;
-static Point        g_hold_start_point;      // remembers where you first touched
-
-
-static bool g_myStack_destination_hold_in_progress = false;
-static unsigned long g_myStack_destination_hold_start_time = 0;
 
 // --- For Interrupt Animation on myStack ---
 bool myStackIsPerformingInterruptAnim = false;    
 SpriteStackAnimation* currentInterruptAnimation = nullptr; 
 bool wasMovingToUserDestBeforeInterrupt = false;  
-Point userDestBeforeInterrupt = {0,0};
+Point userDestBeforeInterrupt = {0,0};          
 
 int animIndex = 0; // Index for cycling through interrupt animations
 
@@ -140,15 +133,13 @@ void reset_walk_to_random_point_state(); // Forward declaration
 
 // Animation objects for myStack (used for interrupt)
 RotationAnimation MyRotationAnim(myStack, 0, 360, 3000, 0); // No delay for interrupt
-NoNoAnimation NoNoAnim(myStack, -25, 25, 3000, 0);
+NoNoAnimation NoNoAnim(myStack, -25, 25, 1500, 0);
 NodAnimation NodAnim(myStack, -10, 0, 3000, 0);
 DanceAnimation DanceAnim(myStack, -45, 45, 3000, 0);
 DeselectionAnimation DeseAnim(myStack, -15, 15, 3000, 0);
 SelectionAnimation SelectAnim(myStack, 0, 360, 3000, 0);
 
 SelectionAnimation burgerSelectAnim(burgerStack, 0, 360, 3000, 0);
-
-
 
 // -------------------------
 // UTILITY FUNCTIONS
@@ -291,7 +282,7 @@ bool moveSpriteToTarget(SpriteStack &sprite_stack, Point &currentPos, const Poin
         moving_to_current_target = false; // Force re-initialization for the new target
         internal_target_memory = target;  // Remember this new target
         lastUpdate = millis() - delay_ms; // Prime lastUpdate to allow immediate processing of the new target
-        //Serial.print("moveSpriteToTarget: New target acquired: X="); Serial.print(target.x); Serial.print(", Y="); Serial.println(target.y);
+        Serial.print("moveSpriteToTarget: New target acquired: X="); Serial.print(target.x); Serial.print(", Y="); Serial.println(target.y);
     }
 
     // Initialize movement (set rotation and flag) only if not already moving towards the current internal_target_memory
@@ -360,7 +351,7 @@ static Point current_random_destination;
 
 void reset_walk_to_random_point_state() {
     walking_randomly_active_flag = false;
-    //Serial.println("Random walk state reset.");
+    Serial.println("Random walk state reset.");
 }
 
 void walk_to_random_point(SpriteStack &sprite_stack, Point &currentPos) {
@@ -403,83 +394,55 @@ void updateSpriteStackZOrder() {
 // -------------------------
 
 void test_user_and_random_walk(SpriteStack &sprite_stack, Point &currentPos) {
-    // 1) If an interrupt animation is running on myStack, skip movement logic.
-    if (&sprite_stack == &myStack && myStackIsPerformingInterruptAnim) {
-        return;
+    // If this function is called for myStack AND it's performing an interrupt animation, skip movement.
+    if (myStackIsPerformingInterruptAnim) {
+        Serial.println("test_user_and_random_walk: Bypassed for myStack due to interrupt animation.");
+        return; 
     }
 
-    // 2) Read raw touch coords and detect burger taps (view=false → no debug outline).
     lv_coord_t touchX, touchY;
-    bool isTouchActive = validate_touch(&touchX, &touchY);
+    bool isTouch = validate_touch(&touchX, &touchY); 
 
-    // Read raw press state (true if still touching)
-    bool rawPressed = chsc6x_is_pressed();
+    static bool touch_is_being_held = false;
+    static unsigned long touch_hold_start_time = 0;
 
-    // 1) Starting the hold: only if not already holding AND freshly pressed in the valid box
-    if (!g_hold_in_progress && rawPressed) {
-        // grab coordinates once
-        lv_coord_t tx, ty;
-        chsc6x_get_xy(&tx, &ty);
-        tx = constrain(tx, 0, 240);
-        ty = constrain(ty, 0, 240);
-
-        // only start if inside your 20–220,120–220 box
-        if (is_within_square_bounds(tx, ty, 20, 220, 120, 220)) {
-            g_hold_in_progress     = true;
-            g_hold_start_ts        = millis();
-            g_hold_start_point.x   = tx;
-            g_hold_start_point.y   = ty;
-            Serial.print("Hold started @ ");
-            Serial.print(tx); Serial.print(','); Serial.println(ty);
-        }
-    }
-    // 2) If we *are* holding, check for cancel or completion
-    else if (g_hold_in_progress) {
-        if (!rawPressed) {
-            // finger lifted → cancel
-            Serial.println("Hold cancelled");
-            g_hold_in_progress = false;
-        }
-        else if (millis() - g_hold_start_ts >= USER_DESTINATION_HOLD_DURATION) {
-            // full 2 s completed → commit the destination
-            Serial.print("New user dest: ");
-            Serial.print(g_hold_start_point.x);
-            Serial.print(',');
-            Serial.println(g_hold_start_point.y);
-
-            currentUserDestination   = g_hold_start_point;
-            hasUserDestination       = true;
-            inPostUserTargetCooldown = false;
-            reset_walk_to_random_point_state();
-
-            g_hold_in_progress = false;
+    // User destination setting logic - only if not in interrupt animation
+    if (!myStackIsPerformingInterruptAnim) {
+        if (isTouch && (touchX >= 0 && touchX <= 200) && (touchY >= 120 && touchY <= 220)) { 
+            if (!touch_is_being_held) { 
+                touch_is_being_held = true;
+                touch_hold_start_time = millis();
+            } else { 
+                if (millis() - touch_hold_start_time >= USER_DESTINATION_HOLD_DURATION) { 
+                    Serial.print("New user destination set for myStack: X="); Serial.print(touchX); Serial.print(", Y="); Serial.println(touchY);
+                    currentUserDestination.x = touchX;
+                    currentUserDestination.y = touchY;
+                    hasUserDestination = true;        
+                    inPostUserTargetCooldown = false; 
+                    reset_walk_to_random_point_state(); 
+                }
+            }
         }
     }
 
-    // 4) Movement state machine
+
+    // Movement execution logic
     if (hasUserDestination) {
-      if (moveSpriteToTarget(sprite_stack, currentPos, currentUserDestination)) {
-        // Arrived at user target
-        if (&sprite_stack == &myStack) {
-          Serial.println("Reached user dest");
-          hasUserDestination = false;
-          inPostUserTargetCooldown = true;
-          postUserTargetCooldownStartTime = millis();
+        if (moveSpriteToTarget(sprite_stack, currentPos, currentUserDestination)) {
+            Serial.println("myStack reached User destination.");
+            hasUserDestination = false;             
+            inPostUserTargetCooldown = true;        
+            postUserTargetCooldownStartTime = millis();
         }
-      }
-    }
-    else if (inPostUserTargetCooldown) {
-      if (&sprite_stack == &myStack &&
-          millis() - postUserTargetCooldownStartTime >= POST_USER_TARGET_COOLDOWN_DURATION) {
-        Serial.println("Cooldown over");
-        inPostUserTargetCooldown = false;
-      }
-    }
-    else {
-      // No user dest, not cooling down, not holding → random walk
-      if (&sprite_stack == &myStack && !g_myStack_destination_hold_in_progress) {
+    } else if (inPostUserTargetCooldown) {
+        if (millis() - postUserTargetCooldownStartTime >= POST_USER_TARGET_COOLDOWN_DURATION) {
+            Serial.println("myStack Post-user target cooldown finished.");
+            inPostUserTargetCooldown = false;
+        }
+    } else {
+        // Only myStack does random walk if not doing user dest or in cooldown
         walk_to_random_point(sprite_stack, currentPos);
-      }
+        // Other sprites could have their own independent movement logic here if needed
     }
 }
 
@@ -493,7 +456,7 @@ void handle_interrupt_animation_state() {
             if (wasMovingToUserDestBeforeInterrupt) {
                 hasUserDestination = true;
                 currentUserDestination = userDestBeforeInterrupt;
-                //Serial.print("Resuming user destination for myStack: X="); Serial.print(currentUserDestination.x); Serial.print(", Y="); Serial.println(currentUserDestination.y);
+                Serial.print("Resuming user destination for myStack: X="); Serial.print(currentUserDestination.x); Serial.print(", Y="); Serial.println(currentUserDestination.y);
             } else {
                 // If not previously moving to user dest, random walk will resume naturally
                 // as test_user_and_random_walk is no longer bypassed for myStack,
@@ -507,58 +470,56 @@ void handle_interrupt_animation_state() {
 
 
 void test_anims() {
-    static bool wasTouched_anim_trigger = false;
-    Point stackPos = myStack.getPosition();
-    bool isTouched_on_myStack = get_touch_in_area_center(stackPos.x - 10, stackPos.y - 20,
-                                                       myStack.getZoomPercent() * 0.08,
-                                                       myStack.getZoomPercent() * 0.12,
-                                                       true);
+  static bool wasTouched_anim_trigger = false; // Renamed to be specific
+  Point stackPos = myStack.getPosition();
+  // Use a slightly larger, more reliable hit area for tapping the sprite
+  bool isTouched_on_myStack = get_touch_in_area_center(stackPos.x-10, stackPos.y-20, 
+                                                       myStack.getZoomPercent() * 0.08, // Approx 8% of current visual width
+                                                       myStack.getZoomPercent() * 0.12, // Approx 12% of current visual height
+                                                       true); 
 
-    if (isTouched_on_myStack && !wasTouched_anim_trigger && !inCatchingGame) {
-        bool is_myStack_already_animating = myStackIsPerformingInterruptAnim ||
-                                          MyRotationAnim.isActive() || NoNoAnim.isActive() || NodAnim.isActive() ||
-                                          DanceAnim.isActive() || DeseAnim.isActive() || SelectAnim.isActive();
+  if (isTouched_on_myStack && !wasTouched_anim_trigger && !inCatchingGame) { 
+    // Check if myStack is ALREADY doing an interrupt animation OR any of its standard anims are active
+    bool is_myStack_already_animating = myStackIsPerformingInterruptAnim ||
+                                     MyRotationAnim.isActive() || NoNoAnim.isActive() || NodAnim.isActive() ||
+                                     DanceAnim.isActive() || DeseAnim.isActive() || SelectAnim.isActive();
+    
+    if (!is_myStack_already_animating) {
+        Serial.print("myStack tapped! Initiating interrupt animation, index: "); Serial.println(animIndex);
+        myStackIsPerformingInterruptAnim = true; 
 
-        // MODIFIED CONDITION: Only trigger tap animation if not already animating AND
-        // if a destination hold is NOT currently in progress for myStack.
-        if (!is_myStack_already_animating && !g_myStack_destination_hold_in_progress) {
-            Serial.print("myStack tapped! Initiating interrupt animation, index: "); Serial.println(animIndex);
-            myStackIsPerformingInterruptAnim = true;
-
-            wasMovingToUserDestBeforeInterrupt = hasUserDestination;
-            if (hasUserDestination) {
-                userDestBeforeInterrupt = currentUserDestination;
-            }
-
-            hasUserDestination = false; // Temporarily stop user dest pursuit
-            reset_walk_to_random_point_state(); // Stop current random walk
-
-            myStack.setRotation(0, 0, 0); // Face screen
-
-            switch (animIndex) {
-                case 0: DanceAnim.start(); currentInterruptAnimation = &DanceAnim; break;
-                case 1: MyRotationAnim.start(); currentInterruptAnimation = &MyRotationAnim; break;
-                case 2: NoNoAnim.start(); currentInterruptAnimation = &NoNoAnim; break;
-                case 3: NodAnim.start(); currentInterruptAnimation = &NodAnim; break;
-                case 4: DeseAnim.start(); currentInterruptAnimation = &DeseAnim; break;
-                case 5: SelectAnim.start(); currentInterruptAnimation = &SelectAnim; break;
-            }
-            animIndex = (animIndex + 1) % 6;
-        } else if (g_myStack_destination_hold_in_progress) {
-            // Optional: Log that tap animation was suppressed due to hold
-            // Serial.println("Tap on myStack ignored, destination hold in progress.");
+        wasMovingToUserDestBeforeInterrupt = hasUserDestination;
+        if (hasUserDestination) {
+            userDestBeforeInterrupt = currentUserDestination;
         }
-    }
-    wasTouched_anim_trigger = isTouched_on_myStack;
+        
+        hasUserDestination = false; // Temporarily stop user dest pursuit
+        reset_walk_to_random_point_state(); // Stop current random walk
 
-    // Update all animation objects.
-    if (DanceAnim.isActive()) DanceAnim.update();
-    if (MyRotationAnim.isActive()) MyRotationAnim.update();
-    if (NoNoAnim.isActive()) NoNoAnim.update();
-    if (NodAnim.isActive()) NodAnim.update();
-    if (DeseAnim.isActive()) DeseAnim.update();
-    if (SelectAnim.isActive()) SelectAnim.update();
+        myStack.setRotation(0, 0, 0); // Face screen
+        
+        switch (animIndex) {
+          case 0: DanceAnim.start(); currentInterruptAnimation = &DanceAnim; break;
+          case 1: MyRotationAnim.start(); currentInterruptAnimation = &MyRotationAnim; break;
+          case 2: NoNoAnim.start(); currentInterruptAnimation = &NoNoAnim; break;
+          case 3: NodAnim.start(); currentInterruptAnimation = &NodAnim; break;
+          case 4: DeseAnim.start(); currentInterruptAnimation = &DeseAnim; break; 
+          case 5: SelectAnim.start(); currentInterruptAnimation = &SelectAnim; break;
+        }
+        animIndex = (animIndex + 1) % 6; 
+    }
+  }
+  wasTouched_anim_trigger = isTouched_on_myStack;
+
+  // Update all animation objects. Their own isActive() will control if they run.
+  if (DanceAnim.isActive())      DanceAnim.update();
+  if (MyRotationAnim.isActive()) MyRotationAnim.update();
+  if (NoNoAnim.isActive())       NoNoAnim.update();
+  if (NodAnim.isActive())        NodAnim.update();
+  if (DeseAnim.isActive())       DeseAnim.update();
+  if (SelectAnim.isActive())     SelectAnim.update();
 }
+
 
 // -------------------------
 // SETUP & LOOP
@@ -589,8 +550,10 @@ void setup() {
 
   myStack.create(mainScreen);
   myStack.setPosition(g_spritePosition.x, g_spritePosition.y);
+  myStack.setZoom(100.0f); 
   Serial.println("myStack (cat) created.");
 
+  
   burgerStack.create(mainScreen);
   burgerStack.setPosition(burgerPosition.x, burgerPosition.y);
   burgerStack.setZoom(100.0f);
@@ -617,17 +580,17 @@ void loop() {
 
   test_anims(); // Handles starting interrupt anims & updating all standard anims
   
+  // Movement logic is now conditional inside test_user_and_random_walk
+  test_user_and_random_walk(myStack, g_spritePosition); 
+
   if(get_touch_in_area_center(burgerPosition.x, burgerPosition.y, 20, 20, true)){
     Serial.println("burger touched");
     burgerSelectAnim.start();
   }
   if (burgerSelectAnim.isActive())     burgerSelectAnim.update();
 
-  // Movement logic is now conditional inside test_user_and_random_walk
-  test_user_and_random_walk(myStack, g_spritePosition); 
-
   updateSpriteStackZOrder();
 
   lv_task_handler();
-  delay(2); 
+  delay(10); 
 }

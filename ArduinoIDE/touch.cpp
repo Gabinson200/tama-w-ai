@@ -76,11 +76,11 @@ bool validate_touch(lv_coord_t* touchX, lv_coord_t* touchY) {
     chsc6x_get_xy(touchX, touchY);
 
     // Debug print the raw coordinates
-    Serial.print("validate_touch -> raw coords: (");
-    Serial.print(*touchX);
-    Serial.print(", ");
-    Serial.print(*touchY);
-    Serial.println(")");
+    //Serial.print("validate_touch -> raw coords: (");
+    //Serial.print(*touchX);
+    //Serial.print(", ");
+    //Serial.print(*touchY);
+    //Serial.println(")");
 
     // Clamp the values to valid display coordinates (0 to 240)
     *touchX = constrain(*touchX, 0, 240);
@@ -315,7 +315,7 @@ bool pressed(int duration, int x_min, int x_max, int y_min, int y_max, bool view
             if (isPressed) {
                 return false;
             }
-            delay(10); // Delay to prevent busy-waiting.
+            delay(2); // Delay to prevent busy-waiting.
         }
     }
 }
@@ -385,7 +385,7 @@ bool pressed_circle(int duration, int center_x, int center_y, int radius, bool v
             if (isPressed) {
                 return false;
             }
-            delay(10);
+            delay(2);
         }
     }
 }

@@ -262,7 +262,7 @@ void SelectionAnimation::update() {
         float currentRot = (_endAngle - _startAngle) * sin(t * PI/2); // do a full circle once or any other degree rotation pi * n times
         _sprite.setRotation(_basePitch, _baseYaw, currentRot);
         _sprite.setPosition(_pos.x, _pos.y - 20*sin(t * PI)); // sine wave between 0 and 10 pixels for height
-        _sprite.setLayerOffset(1 + 2*sin(t * PI)); // sine wave between 1 to 4 between layer offsets
+        _sprite.setLayerOffset(1 + 1*sin(t * PI)); // sine wave between 1 to 3 between layer offsets
     }
 }
 

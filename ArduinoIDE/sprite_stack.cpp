@@ -190,7 +190,7 @@
         }
 
         bool overall_zoom_needs_lvgl_update = (last_lvgl_zoom_applied != base_zoom_lvgl);
-        int16_t current_lvgl_roll = static_cast<int16_t>(round(roll * 10.0f)); // Round for angle
+        int16_t current_lvgl_roll = static_cast<int16_t>(roll * 10.0f); // Round for angle
         bool overall_roll_needs_lvgl_update = (last_lvgl_roll_applied != current_lvgl_roll);
 
         for (int j = 0; j < num_slices; j++) {

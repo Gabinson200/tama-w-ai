@@ -96,6 +96,8 @@ bool myStackIsPerformingInterruptAnim = false;
 SpriteStackAnimation* currentInterruptAnimation = nullptr; 
 bool wasMovingToUserDestBeforeInterrupt = false;  
 Point userDestBeforeInterrupt = {0,0};          
+static bool myStack_tap_handled = false; // Flag to debounce taps on myStack for item toggle
+bool show_items = false;
 
 int animIndex = 0; // Index for cycling through interrupt animations
 
@@ -524,9 +526,12 @@ void test_anims() {
 // -------------------------
 // SETUP & LOOP
 // -------------------------
+// -------------------------
+// SETUP & LOOP
+// -------------------------
 void setup() {
   Serial.begin(115200);
-  while (!Serial && millis() < 2000); 
+  while (!Serial && millis() < 2000);
   Serial.println("LVGL Sprite Stack Tamagotchi - Setup Start");
 
   lv_init();
@@ -543,17 +548,19 @@ void setup() {
   Serial.println("RTC initialized.");
 
   mainScreen = lv_obj_create(NULL);
-  lv_obj_remove_style_all(mainScreen); 
-  lv_obj_set_size(mainScreen, lv_disp_get_hor_res(NULL), lv_disp_get_ver_res(NULL)); 
+  lv_obj_remove_style_all(mainScreen);
+  lv_obj_set_size(mainScreen, lv_disp_get_hor_res(NULL), lv_disp_get_ver_res(NULL));
   lv_scr_load(mainScreen);
   Serial.println("Main screen created and loaded.");
 
   myStack.create(mainScreen);
   myStack.setPosition(g_spritePosition.x, g_spritePosition.y);
-  myStack.setZoom(100.0f); 
+  myStack.setZoom(100.0f);
   Serial.println("myStack (cat) created.");
 
-  
+  // Burger and Bed are initially not created, they will be created when show_items becomes true.
+  // Remove their creation from setup:
+  /*
   burgerStack.create(mainScreen);
   burgerStack.setPosition(burgerPosition.x, burgerPosition.y);
   burgerStack.setZoom(100.0f);
@@ -563,34 +570,99 @@ void setup() {
   bedStack.setPosition(bedPosition.x, bedPosition.y);
   bedStack.setZoom(200.0f);
   Serial.println("bedStack created.");
-  
-  randomSeed(analogRead(A0)); 
+  */
+
+  randomSeed(analogRead(A0));
   Serial.println("Random seed set.");
   Serial.println("Setup complete. Starting loop...");
 }
 
 void loop() {
-  render_scene(mainScreen); 
+  // Explicitly call validate_touch to ensure consistent polling of the touch controller.
+  // This helps stabilize the raw touch readings used by the hold logic and other touch checks.
+  lv_coord_t dummyX, dummyY;
+  // The return value and coordinates are not directly used here, but the call ensures
+  // the underlying chsc6x_is_pressed() and chsc6x_get_xy() are executed regularly,
+  // which is crucial for the debounced touch state used by the hold logic.
+  validate_touch(&dummyX, &dummyY);
 
-  myStack.update();
-  burgerStack.update();
-  bedStack.update();
+  render_scene(mainScreen);
 
   handle_interrupt_animation_state(); // Check for interrupt animation completion
 
-  test_anims(); // Handles starting interrupt anims & updating all standard anims
-  
-  // Movement logic is now conditional inside test_user_and_random_walk
-  test_user_and_random_walk(myStack, g_spritePosition); 
+  // Update animations here. These should update if isActive() is true.
+    if (MyRotationAnim.isActive()) MyRotationAnim.update();
+    if (NoNoAnim.isActive()) NoNoAnim.update();
+    if (NodAnim.isActive()) NodAnim.update();
+    if (DanceAnim.isActive()) DanceAnim.update();
+    if (DeseAnim.isActive()) DeseAnim.update();
+    if (SelectAnim.isActive()) SelectAnim.update();
+    if (burgerSelectAnim.isActive()) burgerSelectAnim.update();
 
-  if(get_touch_in_area_center(burgerPosition.x, burgerPosition.y, 20, 20, true)){
+
+  // Movement logic for myStack (includes the refined hold detection)
+  test_user_and_random_walk(myStack, g_spritePosition);
+
+
+    // --- Non-blocking logic to toggle items on tap of myStack ---
+    // Use get_touch_in_area_center which is non-blocking
+    Point myStackPos = myStack.getPosition();
+    bool isTouched_on_myStack_for_toggle = get_touch_in_area_center(
+        myStackPos.x - 10, myStackPos.y - 20,
+        myStack.getZoomPercent() * 0.08,
+        myStack.getZoomPercent() * 0.12,
+        true // View the area for debugging
+    );
+
+    if (isTouched_on_myStack_for_toggle && !myStack_tap_handled) {
+        // Only trigger on the rising edge of the touch (when it first becomes true)
+        Serial.println("myStack tapped for item toggle!");
+        myStack_tap_handled = true; // Mark as handled
+
+        if (show_items == false) {
+            // Create items
+            burgerStack.create(mainScreen);
+            burgerStack.setPosition(burgerPosition.x, burgerPosition.y);
+            burgerStack.setZoom(100.0f);
+            Serial.println("burgerStack created.");
+
+            bedStack.create(mainScreen);
+            bedStack.setPosition(bedPosition.x, bedPosition.y);
+            bedStack.setZoom(200.0f);
+            Serial.println("bedStack created.");
+
+            show_items = true;
+        } else {
+            // Destroy items
+            bedStack.destroy();
+            burgerStack.destroy();
+            show_items = false;
+        }
+    } else if (!isTouched_on_myStack_for_toggle) {
+        // Reset the handled flag when touch is released
+        myStack_tap_handled = false;
+    }
+
+
+  // Touch handling for burger (if applicable and uses get_touch_in_area_center)
+  // This remains as is. get_touch_in_area_center is non-blocking.
+  if(show_items && get_touch_in_area_center(burgerPosition.x, burgerPosition.y, 20, 20, true)){
     Serial.println("burger touched");
     burgerSelectAnim.start();
   }
-  if (burgerSelectAnim.isActive())     burgerSelectAnim.update();
 
-  updateSpriteStackZOrder();
+  // Update sprite stacks regardless of touch
+  myStack.update();
+    // Only update burger and bed if they exist (show_items is true)
+    if (show_items) {
+        burgerStack.update();
+        bedStack.update();
+    }
 
-  lv_task_handler();
-  delay(10); 
+
+  updateSpriteStackZOrder(); // This should happen after position updates and before lv_task_handler
+
+  lv_task_handler(); // This is crucial for LVGL to process updates and redraw
+
+  delay(10); // Keep a small delay to yield time
 }

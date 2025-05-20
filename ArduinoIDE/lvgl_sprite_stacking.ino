@@ -88,7 +88,7 @@ bool hasUserDestination = false;
 Point currentUserDestination = {0,0};           
 bool inPostUserTargetCooldown = false;          
 unsigned long postUserTargetCooldownStartTime = 0;
-const unsigned long USER_DESTINATION_HOLD_DURATION = 5000; 
+const unsigned long USER_DESTINATION_HOLD_DURATION = 2000; 
 const unsigned long POST_USER_TARGET_COOLDOWN_DURATION = 7000; 
 
 // --- For Interrupt Animation on myStack ---
@@ -590,15 +590,7 @@ void loop() {
 
   handle_interrupt_animation_state(); // Check for interrupt animation completion
 
-  // Update animations here. These should update if isActive() is true.
-    if (MyRotationAnim.isActive()) MyRotationAnim.update();
-    if (NoNoAnim.isActive()) NoNoAnim.update();
-    if (NodAnim.isActive()) NodAnim.update();
-    if (DanceAnim.isActive()) DanceAnim.update();
-    if (DeseAnim.isActive()) DeseAnim.update();
-    if (SelectAnim.isActive()) SelectAnim.update();
-    if (burgerSelectAnim.isActive()) burgerSelectAnim.update();
-
+  test_anims();
 
   // Movement logic for myStack (includes the refined hold detection)
   test_user_and_random_walk(myStack, g_spritePosition);
@@ -651,10 +643,12 @@ void loop() {
     burgerSelectAnim.start();
   }
 
+
   // Update sprite stacks regardless of touch
   myStack.update();
     // Only update burger and bed if they exist (show_items is true)
     if (show_items) {
+        if (burgerSelectAnim.isActive())     burgerSelectAnim.update();
         burgerStack.update();
         bedStack.update();
     }

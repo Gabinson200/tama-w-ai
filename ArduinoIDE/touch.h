@@ -30,9 +30,93 @@ bool get_touch_in_area_center(int center_x, int center_y, int half_width, int ha
 bool get_touch_in_area_circle(int center_x, int center_y, int radius, bool view = false);
 
 // Press (hold) functions
+/*
 bool pressed(int duration, int x_min, int x_max, int y_min, int y_max, bool view = false);
 bool pressed_center(int duration, int center_x, int center_y, int half_width, int half_height, bool view = false);
 bool pressed_circle(int duration, int center_x, int center_y, int radius, bool view = false);
+*/
+
+// ----------------New non blocking touch functions
+// --- Gesture States ---
+enum class GestureState {
+    IDLE,       // Not tracking, ready to begin
+    POSSIBLE,   // Initial conditions met, could become a gesture
+    BEGAN,      // Gesture has officially begun (e.g., long press duration met)
+    ENDED,      // Gesture completed successfully
+    FAILED,     // Conditions not met, gesture did not complete
+    CANCELLED   // Gesture was externally cancelled
+};
+
+const char* gestureStateToString(GestureState state);
+
+// --- Touch Point Structure (simplified) ---
+struct TouchInfo {
+    bool is_pressed = false;
+    lv_coord_t x = 0;
+    lv_coord_t y = 0;
+    unsigned long timestamp = 0;
+};
+
+// --- Base Class ---
+class BaseGestureRecognizer {
+public:
+    BaseGestureRecognizer();
+    virtual ~BaseGestureRecognizer() {}
+
+    virtual void update(const TouchInfo& current_touch_info) = 0;
+    virtual void reset();
+    void cancel(); // New method to explicitly cancel
+
+    GestureState get_state() const;
+    void set_target_area(lv_area_t area);
+    lv_area_t get_target_area() const;
+    void set_enabled(bool enable);
+    bool is_enabled() const;
+
+    void* user_data; // Optional, for associating data
+
+protected:
+    GestureState current_state;
+    lv_area_t target_area;
+    bool enabled;
+    TouchInfo start_touch_info; // Store initial touch down info
+
+    bool is_within_target_area(lv_coord_t x, lv_coord_t y) const;
+};
+
+// --- Tap Gesture Recognizer ---
+class TapGestureRecognizer : public BaseGestureRecognizer {
+public:
+    TapGestureRecognizer(unsigned long max_duration_ms = 300, lv_coord_t max_movement = 10);
+
+    void update(const TouchInfo& current_touch_info) override;
+    void reset() override;
+
+    void set_config(unsigned long max_duration_ms, lv_coord_t max_movement);
+
+private:
+    unsigned long max_duration_ms;
+    lv_coord_t max_movement_pixels;
+};
+
+// --- Long Press Gesture Recognizer ---
+class LongPressGestureRecognizer : public BaseGestureRecognizer {
+public:
+    LongPressGestureRecognizer(unsigned long min_duration_ms = 1000, lv_coord_t max_movement = 15);
+
+    void update(const TouchInfo& current_touch_info) override;
+    void reset() override;
+
+    void set_config(unsigned long min_duration_ms, lv_coord_t max_movement);
+
+    // Get the location where the long press was recognized
+    lv_coord_t recognized_at_x;
+    lv_coord_t recognized_at_y;
+
+private:
+    unsigned long min_duration_ms;
+    lv_coord_t max_movement_pixels;
+};
 
 //---------------- For swiping functions ----------------------
 

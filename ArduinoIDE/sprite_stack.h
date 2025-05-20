@@ -23,6 +23,7 @@
         int num_slices;
         int starting_index;
         float base_x, base_y;
+        int width, height;
         float pitch = 0, yaw = 0, roll = 0;
         float depth_scale;
         float layer_offset;
@@ -54,11 +55,13 @@
         ~SpriteStack();
         void create(lv_obj_t* parent);
         void destroy();
+        lv_obj_t* getLVGLObject() const;
 
         void setZoom(float percent);
         float getZoomPercent() const;
         float getInitialZoomPercent() const;
         uint16_t getLvglZoom() const;
+        void getDim(int &width, int &height) const;
 
         void setPosition(float x, float y);
         Point getPosition() const;

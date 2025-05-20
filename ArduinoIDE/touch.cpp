@@ -4,6 +4,9 @@
 #include <Arduino.h>
 #include <math.h>
 
+extern bool GESTURE_DEBUG_ENABLED;
+
+
 // Forward declaration of the event callback for shape clicks.
 static void shape_event_cb(lv_event_t * e);
 
@@ -59,34 +62,63 @@ bool is_within_circle_bounds(int x, int y, int center_x, int center_y, int radiu
 
 //----------------------- Touch Validation ------------------------
 
+static unsigned long lastRawTouchTime = 0;       // Time of the last raw touch state change
+static bool lastRawTouchState = false;           // Previous raw touch state (true if pressed, false if released)
+static bool currentDebouncedTouchState = false;  // Current debounced touch state
+static unsigned long lastDebouncedPressTime = 0; // Time of the last debounced press
+static lv_coord_t debouncedX = 0;
+static lv_coord_t debouncedY = 0;
+
+const unsigned long DEBOUNCE_DELAY_MS = 50; // 50 milliseconds debounce delay
+
 /**
- * Validate and retrieve the current touch coordinates.
- * Clamps the coordinates to the display boundaries (assumed 240x240).
+ * @brief Validates touch input with debouncing.
  *
- * @param touchX Pointer to store the X coordinate.
- * @param touchY Pointer to store the Y coordinate.
- * @return       True if a touch is detected, false otherwise.
+ * Reads the raw touch input and applies a time-based debounce logic.
+ * Only returns true for a stable, debounced press.
+ * Updates touchX and touchY with the coordinates of the debounced press.
+ *
+ * @param touchX Pointer to store the X coordinate of the debounced touch.
+ * @param touchY Pointer to store the Y coordinate of the debounced touch.
+ * @return True if a debounced touch press is active, false otherwise.
  */
 bool validate_touch(lv_coord_t* touchX, lv_coord_t* touchY) {
-    if (!chsc6x_is_pressed()) {
-        return false;
+    lv_coord_t rawX, rawY;
+    bool rawPressed = get_touch(&rawX, &rawY, false); // Get current raw touch state & coordinates
+    unsigned long currentTime = millis();
+
+    // Check if the raw touch state has changed since the last check
+    if (rawPressed != lastRawTouchState) {
+        lastRawTouchTime = currentTime; // Record the time of the state change
+        lastRawTouchState = rawPressed;   // Update the last known raw state
     }
-    
-    // Retrieve touch coordinates
-    chsc6x_get_xy(touchX, touchY);
 
-    // Debug print the raw coordinates
-    //Serial.print("validate_touch -> raw coords: (");
-    //Serial.print(*touchX);
-    //Serial.print(", ");
-    //Serial.print(*touchY);
-    //Serial.println(")");
+    // If enough time has passed since the last raw state change,
+    // update the debounced state to match the current raw state.
+    if ((currentTime - lastRawTouchTime) > DEBOUNCE_DELAY_MS) {
+        if (rawPressed != currentDebouncedTouchState) {
+            currentDebouncedTouchState = rawPressed;
+            if (currentDebouncedTouchState) { // If the new debounced state is pressed
+                debouncedX = rawX;
+                debouncedY = rawY;
+                lastDebouncedPressTime = currentTime; // Record the time of this debounced press
+            }
+        }
+    }
 
-    // Clamp the values to valid display coordinates (0 to 240)
-    *touchX = constrain(*touchX, 0, 240);
-    *touchY = constrain(*touchY, 0, 240);
-    
-    return true;
+    // If the current debounced state is pressed, provide the coordinates
+    if (currentDebouncedTouchState) {
+        //*touchX = debouncedX; // Use the coordinates captured when the press was first debounced
+        //*touchY = debouncedY; // or you could update them with rawX/rawY if you want continuous coord update while pressed
+                              // For simple press/release debouncing, using stored coords is often fine.
+                              // If using for dragging, updating with rawX/rawY (after initial debounce) might be better.
+                              // Let's update to current raw if debounced state is pressed, for responsiveness in gestures
+        *touchX = rawX;
+        *touchY = rawY;
+        return true;
+    }
+
+    return false;
 }
 
 /**
@@ -279,6 +311,7 @@ void wait_for_release() {
  * @param view     If true, draws the area on the screen for debugging.
  * @return         True if the area was pressed continuously for the duration; false otherwise.
  */
+/*
 bool pressed(int duration, int x_min, int x_max, int y_min, int y_max, bool view) {
     lv_coord_t touchX, touchY;
     unsigned long pressStart = 0;
@@ -319,7 +352,7 @@ bool pressed(int duration, int x_min, int x_max, int y_min, int y_max, bool view
         }
     }
 }
-
+*/
 /**
  * Overloaded function for center-based rectangular press detection.
  *
@@ -331,12 +364,13 @@ bool pressed(int duration, int x_min, int x_max, int y_min, int y_max, bool view
  * @param view       If true, draws the area on the screen for debugging.
  * @return           True if the area was pressed continuously for the duration; false otherwise.
  */
+/*
 bool pressed_center(int duration, int center_x, int center_y, int half_width, int half_height, bool view) {
     return pressed(duration,
                    center_x - half_width, center_x + half_width,
                    center_y - half_height, center_y + half_height, view);
 }
-
+*/
 /**
  * Blocks until the user presses and holds within the specified circular area
  * for the given duration. Returns false if the user releases or moves outside the area.
@@ -348,6 +382,7 @@ bool pressed_center(int duration, int center_x, int center_y, int half_width, in
  * @param view     If true, draws the circle on the screen for debugging.
  * @return         True if the circle was pressed continuously for the duration; false otherwise.
  */
+/*
 bool pressed_circle(int duration, int center_x, int center_y, int radius, bool view) {
     lv_coord_t touchX, touchY;
     unsigned long pressStart = 0;
@@ -386,6 +421,242 @@ bool pressed_circle(int duration, int center_x, int center_y, int radius, bool v
                 return false;
             }
             delay(2);
+        }
+    }
+}
+*/
+
+//-----------------------  New non-blocking Touch Press Handling -----------------------
+
+// Helper function to convert GestureState to string for debugging
+const char* gestureStateToString(GestureState state) {
+    switch (state) {
+        case GestureState::IDLE: return "IDLE";
+        case GestureState::POSSIBLE: return "POSSIBLE";
+        case GestureState::BEGAN: return "BEGAN";
+        case GestureState::ENDED: return "ENDED";
+        case GestureState::FAILED: return "FAILED";
+        case GestureState::CANCELLED: return "CANCELLED";
+        default: return "UNKNOWN";
+    }
+}
+
+// --- BaseGestureRecognizer Implementation ---
+BaseGestureRecognizer::BaseGestureRecognizer()
+    : current_state(GestureState::IDLE), target_area({0, 0, 0, 0}), enabled(true), user_data(nullptr) {}
+
+void BaseGestureRecognizer::reset() {
+    if (GESTURE_DEBUG_ENABLED && current_state != GestureState::IDLE) {
+        // You can add a recognizer identifier if you pass it via user_data or add a name member
+        Serial.print("GR_DEBUG: Recognizer Resetting from state ");
+        Serial.println(gestureStateToString(current_state));
+    }
+    current_state = GestureState::IDLE;
+}
+
+void BaseGestureRecognizer::cancel() {
+    if (current_state != GestureState::IDLE && current_state != GestureState::ENDED && current_state != GestureState::FAILED && current_state != GestureState::CANCELLED) {
+        if (GESTURE_DEBUG_ENABLED) {
+            Serial.print("GR_DEBUG: Recognizer Cancelling from state ");
+            Serial.print(gestureStateToString(current_state));
+            Serial.println(" -> CANCELLED");
+        }
+        current_state = GestureState::CANCELLED;
+    }
+}
+
+GestureState BaseGestureRecognizer::get_state() const {
+    return current_state;
+}
+
+void BaseGestureRecognizer::set_target_area(lv_area_t area) {
+    target_area = area;
+    if (GESTURE_DEBUG_ENABLED) {
+        //Serial.print("GR_DEBUG: Target Area Set: x1="); Serial.print(target_area.x1);
+        //Serial.print(" y1="); Serial.print(target_area.y1);
+        //Serial.print(" x2="); Serial.print(target_area.x2);
+        //Serial.print(" y2="); Serial.println(target_area.y2);
+    }
+}
+
+lv_area_t BaseGestureRecognizer::get_target_area() const {
+    return target_area;
+}
+
+void BaseGestureRecognizer::set_enabled(bool enable) {
+    if (enabled && !enable) { // If disabling an active recognizer
+        if (GESTURE_DEBUG_ENABLED) {
+             Serial.print("GR_DEBUG: Recognizer Disabled. Was: "); Serial.println(gestureStateToString(current_state));
+        }
+        if (current_state != GestureState::IDLE && current_state != GestureState::ENDED && current_state != GestureState::FAILED) {
+            current_state = GestureState::CANCELLED; // Or FAILED
+        }
+    } else if (!enabled && enable && GESTURE_DEBUG_ENABLED) {
+        Serial.println("GR_DEBUG: Recognizer Enabled.");
+    }
+    enabled = enable;
+}
+
+bool BaseGestureRecognizer::is_enabled() const {
+    return enabled;
+}
+
+bool BaseGestureRecognizer::is_within_target_area(lv_coord_t x, lv_coord_t y) const {
+    bool within = (x >= target_area.x1 && x <= target_area.x2 &&
+                   y >= target_area.y1 && y <= target_area.y2);
+    if (GESTURE_DEBUG_ENABLED && !within) {
+        Serial.print("GR_DEBUG: Touch ("); Serial.print(x); Serial.print(","); Serial.print(y);
+        Serial.print(") is OUTSIDE target area (x1:"); Serial.print(target_area.x1);
+        Serial.print(",y1:"); Serial.print(target_area.y1);
+        Serial.print(",x2:"); Serial.print(target_area.x2);
+        Serial.print(",y2:"); Serial.print(target_area.y2); Serial.println(")");
+    }
+    return within;
+}
+
+// --- TapGestureRecognizer Implementation ---
+TapGestureRecognizer::TapGestureRecognizer(unsigned long max_duration_ms, lv_coord_t max_movement)
+    : BaseGestureRecognizer(), max_duration_ms(max_duration_ms), max_movement_pixels(max_movement) {}
+
+void TapGestureRecognizer::reset() {
+    BaseGestureRecognizer::reset(); // Calls base class debug print if applicable
+}
+
+void TapGestureRecognizer::set_config(unsigned long duration, lv_coord_t movement) {
+    max_duration_ms = duration;
+    max_movement_pixels = movement;
+}
+
+void TapGestureRecognizer::update(const TouchInfo& current_touch_info) {
+    if (!enabled) {
+        if(current_state != GestureState::IDLE) reset(); // Reset if disabled while active
+        return;
+    }
+    if (current_state == GestureState::ENDED || current_state == GestureState::FAILED || current_state == GestureState::CANCELLED) return;
+
+    GestureState prev_state = current_state;
+
+    switch (current_state) {
+        case GestureState::IDLE:
+            if (current_touch_info.is_pressed && is_within_target_area(current_touch_info.x, current_touch_info.y)) {
+                start_touch_info = current_touch_info;
+                current_state = GestureState::POSSIBLE;
+            }
+            break;
+
+        case GestureState::POSSIBLE:
+            if (!current_touch_info.is_pressed) { // Touch released
+                unsigned long duration = current_touch_info.timestamp - start_touch_info.timestamp;
+                lv_coord_t dX = abs(current_touch_info.x - start_touch_info.x);
+                lv_coord_t dY = abs(current_touch_info.y - start_touch_info.y);
+
+                bool released_within_area = is_within_target_area(current_touch_info.x, current_touch_info.y);
+
+                if (duration <= max_duration_ms && dX <= max_movement_pixels && dY <= max_movement_pixels && released_within_area) {
+                    current_state = GestureState::ENDED;
+                } else {
+                    current_state = GestureState::FAILED;
+                    if (GESTURE_DEBUG_ENABLED) {
+                        Serial.print("GR_TAP_FAIL: Dur:"); Serial.print(duration); Serial.print("ms (max:"); Serial.print(max_duration_ms);
+                        Serial.print(") dX:"); Serial.print(dX); Serial.print(" dY:"); Serial.print(dY); Serial.print(" (max:"); Serial.print(max_movement_pixels);
+                        Serial.print(") ReleasedInArea:"); Serial.println(released_within_area);
+                    }
+                }
+            } else { // Still pressed
+                unsigned long duration = current_touch_info.timestamp - start_touch_info.timestamp;
+                lv_coord_t dX = abs(current_touch_info.x - start_touch_info.x);
+                lv_coord_t dY = abs(current_touch_info.y - start_touch_info.y);
+                bool still_in_area = is_within_target_area(current_touch_info.x, current_touch_info.y);
+
+                if (duration > max_duration_ms || dX > max_movement_pixels || dY > max_movement_pixels || !still_in_area) {
+                    current_state = GestureState::FAILED;
+                     if (GESTURE_DEBUG_ENABLED) {
+                        Serial.print("GR_TAP_FAIL (pressed): Dur:"); Serial.print(duration); Serial.print("ms (max:"); Serial.print(max_duration_ms);
+                        Serial.print(") dX:"); Serial.print(dX); Serial.print(" dY:"); Serial.print(dY); Serial.print(" (max:"); Serial.print(max_movement_pixels);
+                        Serial.print(") StillInArea:"); Serial.println(still_in_area);
+                    }
+                }
+            }
+            break;
+        default:
+            break;
+    }
+
+    if (GESTURE_DEBUG_ENABLED && prev_state != current_state) {
+        // You can add a more specific identifier if you store a name or ID in the recognizer
+        Serial.print("GR_TAP_DEBUG: State "); Serial.print(gestureStateToString(prev_state));
+        Serial.print(" -> "); Serial.println(gestureStateToString(current_state));
+        if (current_state == GestureState::POSSIBLE) {
+             Serial.print("  @ Possible: Start (x,y): ("); Serial.print(start_touch_info.x); Serial.print(","); Serial.print(start_touch_info.y); Serial.println(")");
+        }
+    }
+}
+
+// --- LongPressGestureRecognizer Implementation ---
+LongPressGestureRecognizer::LongPressGestureRecognizer(unsigned long min_duration_ms, lv_coord_t max_movement)
+    : BaseGestureRecognizer(), min_duration_ms(min_duration_ms), max_movement_pixels(max_movement),
+      recognized_at_x(0), recognized_at_y(0) {}
+
+void LongPressGestureRecognizer::reset() {
+    BaseGestureRecognizer::reset();
+    recognized_at_x = 0;
+    recognized_at_y = 0;
+}
+void LongPressGestureRecognizer::set_config(unsigned long duration, lv_coord_t movement) {
+    min_duration_ms = duration;
+    max_movement_pixels = movement;
+}
+
+void LongPressGestureRecognizer::update(const TouchInfo& current_touch_info) {
+    if (!enabled) {
+        if(current_state != GestureState::IDLE) reset();
+        return;
+    }
+    if (current_state == GestureState::ENDED || current_state == GestureState::FAILED || current_state == GestureState::CANCELLED) return;
+
+    GestureState prev_state = current_state;
+
+    switch (current_state) {
+        case GestureState::IDLE:
+            if (current_touch_info.is_pressed && is_within_target_area(current_touch_info.x, current_touch_info.y)) {
+                start_touch_info = current_touch_info;
+                current_state = GestureState::POSSIBLE;
+            }
+            break;
+
+        case GestureState::POSSIBLE:
+            if (current_touch_info.is_pressed) {
+                unsigned long duration = current_touch_info.timestamp - start_touch_info.timestamp;
+                lv_coord_t dX = abs(current_touch_info.x - start_touch_info.x);
+                lv_coord_t dY = abs(current_touch_info.y - start_touch_info.y);
+                bool still_in_area = is_within_target_area(current_touch_info.x, current_touch_info.y);
+
+                if (dX > max_movement_pixels || dY > max_movement_pixels || !still_in_area ) {
+                    current_state = GestureState::FAILED;
+                    if (GESTURE_DEBUG_ENABLED) {
+                        Serial.print("GR_LP_FAIL (pressed): dX:"); Serial.print(dX); Serial.print(" dY:"); Serial.print(dY); Serial.print(" (max:"); Serial.print(max_movement_pixels);
+                        Serial.print(") StillInArea:"); Serial.println(still_in_area);
+                    }
+                } else if (duration >= min_duration_ms) {
+                    recognized_at_x = current_touch_info.x;
+                    recognized_at_y = current_touch_info.y;
+                    current_state = GestureState::ENDED;
+                }
+            } else { // Touch released
+                current_state = GestureState::FAILED;
+                if (GESTURE_DEBUG_ENABLED) {
+                    Serial.println("GR_LP_FAIL: Released too soon.");
+                }
+            }
+            break;
+        default:
+            break;
+    }
+     if (GESTURE_DEBUG_ENABLED && prev_state != current_state) {
+        Serial.print("GR_LP_DEBUG: State "); Serial.print(gestureStateToString(prev_state));
+        Serial.print(" -> "); Serial.println(gestureStateToString(current_state));
+         if (current_state == GestureState::POSSIBLE) {
+             Serial.print("  @ Possible: Start (x,y): ("); Serial.print(start_touch_info.x); Serial.print(","); Serial.print(start_touch_info.y); Serial.println(")");
         }
     }
 }

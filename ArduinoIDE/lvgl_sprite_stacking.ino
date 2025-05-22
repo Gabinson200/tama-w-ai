@@ -91,6 +91,12 @@ unsigned long postUserTargetCooldownStartTime = 0;
 const unsigned long USER_DESTINATION_HOLD_DURATION = 2000; 
 const unsigned long POST_USER_TARGET_COOLDOWN_DURATION = 7000; 
 
+// --- Global Variables for Touch and Gestures ---
+TouchInfo currentGlobalTouch;
+TapGestureRecognizer myTapRecognizer(200, 48, 80); // Max Duration 150ms, Max Move 15px, Confirmation Delay 80ms - Adjust as needed
+LongPressGestureRecognizer myLongPressRecognizer(1000, 240); // Min Duration 700ms, Max Move 20px - Adjust as needed
+swipe_tracker_t mySwipeTracker;
+
 // --- For Interrupt Animation on myStack ---
 bool myStackIsPerformingInterruptAnim = false;    
 SpriteStackAnimation* currentInterruptAnimation = nullptr; 
@@ -100,6 +106,12 @@ static bool myStack_tap_handled = false; // Flag to debounce taps on myStack for
 bool show_items = false;
 
 int animIndex = 0; // Index for cycling through interrupt animations
+
+// background update
+// how often to really redraw the *entire* scene:
+static const unsigned long SCENE_UPDATE_INTERVAL_MS = 60UL * 1000UL; // 1 minute
+// remembers when we last called render_scene()
+static unsigned long lastSceneUpdate = 0;
 
 int catFrameCount = sizeof(cat_images) / sizeof(cat_images[0]);
 int frogFrameCount = sizeof(frog_images) / sizeof(frog_images[0]);
@@ -171,34 +183,17 @@ static inline lv_color_t interpolate_color(lv_color_t c1, lv_color_t c2, float t
 // SCENE RENDERING
 // (render_scene - unchanged from previous version with correct layering)
 // -------------------------
-void render_scene(lv_obj_t* parent = nullptr) {
-  if (!scene_ready) {
-    if (!parent) parent = lv_scr_act(); 
-    top_bg = lv_obj_create(parent);
-    lv_obj_remove_style_all(top_bg); 
-    lv_obj_set_size(top_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) / 2);
-    lv_obj_align(top_bg, LV_ALIGN_TOP_LEFT, 0, 0);
 
-    celestial_canvas = lv_canvas_create(parent);
-    lv_canvas_set_buffer(celestial_canvas, celestial_buf,
-                         CELESTIAL_SIZE, CELESTIAL_SIZE,
-                         LV_IMG_CF_TRUE_COLOR_ALPHA);
-    lv_obj_remove_style_all(celestial_canvas);
-    lv_obj_set_style_bg_opa(celestial_canvas, LV_OPA_TRANSP, 0); 
-    lv_obj_set_style_border_width(celestial_canvas, 0, 0);
-
-    bottom_bg = lv_obj_create(parent);
-    lv_obj_remove_style_all(bottom_bg); 
-    lv_obj_set_size(bottom_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) / 2);
-    lv_obj_align(bottom_bg, LV_ALIGN_BOTTOM_LEFT, 0, 0);
-    
-    scene_ready = true;
-  }
+void update_background(){
 
   I2C_BM8563_TimeTypeDef ts;
   rtc.getTime(&ts);
   int current_hour   = ts.hours;
   int current_minute = ts.minutes;
+
+  Serial.print(current_hour);
+  Serial.print(" : ");
+  Serial.println(current_minute);
 
   int total_minutes_today = current_hour * 60 + current_minute;
   bool is_daytime = (current_hour >= 6 && current_hour < 19);
@@ -228,7 +223,8 @@ void render_scene(lv_obj_t* parent = nullptr) {
   float celestial_angle_rad = PI * time_progress_celestial; 
 
   const int screen_width = lv_obj_get_width(lv_scr_act());
-  const int sky_height = lv_obj_get_height(top_bg); 
+  const int sky_height = lv_obj_get_height(top_bg);
+  Serial.println(sky_height);
   
   const int orbit_center_x = screen_width / 2;
   const int orbit_radius_x = screen_width / 2;
@@ -260,12 +256,46 @@ void render_scene(lv_obj_t* parent = nullptr) {
       }
     }
   }
+
   lv_obj_set_pos(celestial_canvas, celestial_pos_x - CELESTIAL_SIZE / 2, celestial_pos_y - CELESTIAL_SIZE / 2);
   lv_obj_invalidate(celestial_canvas); 
 
   lv_obj_move_background(bottom_bg);        
   lv_obj_move_background(celestial_canvas); 
-  lv_obj_move_background(top_bg);           
+  lv_obj_move_background(top_bg);
+}
+
+void create_scene(lv_obj_t* parent = nullptr) {
+  //if (!scene_ready) {
+    Serial.println("Scene was not ready running setup");
+    if (!parent) parent = lv_scr_act(); 
+    top_bg = lv_obj_create(parent);
+    lv_obj_remove_style_all(top_bg); 
+    lv_obj_set_size(top_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) / 2);
+    lv_obj_align(top_bg, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    celestial_canvas = lv_canvas_create(parent);
+    lv_canvas_set_buffer(celestial_canvas, celestial_buf,
+                         CELESTIAL_SIZE, CELESTIAL_SIZE,
+                         LV_IMG_CF_TRUE_COLOR_ALPHA);
+    lv_obj_remove_style_all(celestial_canvas);
+    lv_obj_set_style_bg_opa(celestial_canvas, LV_OPA_TRANSP, 0); 
+    lv_obj_set_style_border_width(celestial_canvas, 0, 0);
+
+    bottom_bg = lv_obj_create(parent);
+    lv_obj_remove_style_all(bottom_bg); 
+    lv_obj_set_size(bottom_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) / 2);
+    lv_obj_align(bottom_bg, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    
+    //update_background();
+    scene_ready = true;
+  //}
+
+  //if(scene_ready){
+  //  Serial.println("Scene was ready running update");
+  //  update_background();
+  //}
+           
 }
 
 
@@ -395,6 +425,7 @@ void updateSpriteStackZOrder() {
 // INTERACTION LOGIC (MODIFIED)
 // -------------------------
 
+/*
 void test_user_and_random_walk(SpriteStack &sprite_stack, Point &currentPos) {
     // If this function is called for myStack AND it's performing an interrupt animation, skip movement.
     if (myStackIsPerformingInterruptAnim) {
@@ -415,12 +446,13 @@ void test_user_and_random_walk(SpriteStack &sprite_stack, Point &currentPos) {
                 touch_is_being_held = true;
                 touch_hold_start_time = millis();
             } else { 
-                if (millis() - touch_hold_start_time >= USER_DESTINATION_HOLD_DURATION) { 
+                if (millis() - touch_hold_start_time >= USER_DESTINATION_HOLD_DURATION && touch_is_being_held) { 
                     Serial.print("New user destination set for myStack: X="); Serial.print(touchX); Serial.print(", Y="); Serial.println(touchY);
                     currentUserDestination.x = touchX;
                     currentUserDestination.y = touchY;
                     hasUserDestination = true;        
                     inPostUserTargetCooldown = false; 
+                    touch_is_being_held = false;
                     reset_walk_to_random_point_state(); 
                 }
             }
@@ -447,7 +479,7 @@ void test_user_and_random_walk(SpriteStack &sprite_stack, Point &currentPos) {
         // Other sprites could have their own independent movement logic here if needed
     }
 }
-
+*/
 
 void handle_interrupt_animation_state() {
     if (myStackIsPerformingInterruptAnim && currentInterruptAnimation != nullptr) {
@@ -470,7 +502,7 @@ void handle_interrupt_animation_state() {
     }
 }
 
-
+/*
 void test_anims() {
   static bool wasTouched_anim_trigger = false; // Renamed to be specific
   Point stackPos = myStack.getPosition();
@@ -521,11 +553,8 @@ void test_anims() {
   if (DeseAnim.isActive())       DeseAnim.update();
   if (SelectAnim.isActive())     SelectAnim.update();
 }
+*/
 
-
-// -------------------------
-// SETUP & LOOP
-// -------------------------
 // -------------------------
 // SETUP & LOOP
 // -------------------------
@@ -572,12 +601,132 @@ void setup() {
   Serial.println("bedStack created.");
   */
 
+  // --- Initialize Swipe Tracker ---
+  mySwipeTracker.state = SWIPE_IDLE;
+  mySwipeTracker.swipeDetected = false;
+
+  // initially renders here setting scene_ready to true
+  create_scene();
+  lv_task_handler();
+  // negates the timer so it also runs once off-the-bat in the main loop
+  lastSceneUpdate = millis() - SCENE_UPDATE_INTERVAL_MS - 100;
+
   randomSeed(analogRead(A0));
   Serial.println("Random seed set.");
   Serial.println("Setup complete. Starting loop...");
+
+  //lv_task_handler();
+
 }
 
+
+
 void loop() {
+
+    unsigned long now = millis();
+
+    // 1. Get debounced touch information
+    update_global_touch_info(&currentGlobalTouch);
+
+    // 2. Update LongPress and Swipe recognizers FIRST
+    myLongPressRecognizer.update(currentGlobalTouch);
+    update_swipe_state(0, 239, 0, 239, 60, &mySwipeTracker, currentGlobalTouch); // Params: x_min, x_max, y_min, y_max, min_swipe_length
+
+    // 3. Notify TapRecognizer if the current press has been claimed by an ongoing LongPress/Swipe
+    if (currentGlobalTouch.is_pressed) {
+        if (myLongPressRecognizer.get_state() == GestureState::BEGAN || myLongPressRecognizer.get_state() == GestureState::FAILED ||
+            mySwipeTracker.state == SWIPE_DRAGGING) {
+            myTapRecognizer.notify_current_press_is_claimed();
+        }
+    }
+    // TapRecognizer's internal 'ongoing_press_is_claimed_by_other' flag is now managed by its own update/reset logic combined with this notification.
+
+    // 4. Update Tap recognizer
+    myTapRecognizer.update(currentGlobalTouch);
+
+    // 5. Handle Gesture Completion Conflicts
+    if (myTapRecognizer.is_waiting_for_confirmation()) {
+        bool cancel_tap_due_to_conflict = false;
+        if (mySwipeTracker.swipeDetected) {
+            Serial.println("Loop: Swipe completed, tap was pending. Cancelling tap."); // Debug
+            cancel_tap_due_to_conflict = true;
+        }
+        if (myLongPressRecognizer.get_state() == GestureState::ENDED) {
+            Serial.println("Loop: Long press ended, tap was pending. Cancelling tap."); // Debug
+            cancel_tap_due_to_conflict = true;
+        }
+
+        if (cancel_tap_due_to_conflict && !currentGlobalTouch.is_pressed) { // Ensure it was a release
+            myTapRecognizer.cancel();
+        }
+    }
+
+    // 6. React to Gesture States
+    GestureState tapState = myTapRecognizer.get_state();
+    GestureState longPressState = myLongPressRecognizer.get_state();
+    static GestureState prevTapState = GestureState::IDLE;
+    static GestureState prevLongPressState = GestureState::IDLE;
+    static swipe_state_t prevSwipeState = SWIPE_IDLE; // For logging swipe start/end if needed
+
+    if (tapState == GestureState::ENDED) {
+        Serial.println("--------------------------------");
+        Serial.println("EVENT: Tap Detected!");
+        Serial.print("  Tap start X: "); Serial.print(myTapRecognizer.get_tap_x()); // Use TapRecognizer's stored coords
+        Serial.print(", Y: "); Serial.println(myTapRecognizer.get_tap_y());
+        Serial.println("--------------------------------");
+    }
+
+    if (longPressState != prevLongPressState) {
+        if (longPressState == GestureState::BEGAN) {
+            Serial.println("--------------------------------");
+            Serial.print("EVENT: Long Press BEGAN at X:"); Serial.print(myLongPressRecognizer.recognized_at_x);
+            Serial.print(" Y:"); Serial.println(myLongPressRecognizer.recognized_at_y);
+            Serial.println("--------------------------------");
+        } else if (longPressState == GestureState::ENDED) {
+            Serial.println("--------------------------------");
+            Serial.println("EVENT: Long Press ENDED");
+            // For Long Press end, currentGlobalTouch reflects the release point if needed for other logic
+            Serial.print("  Touch Release X: "); Serial.print(currentGlobalTouch.x);
+            Serial.print(", Y: "); Serial.println(currentGlobalTouch.y);
+            Serial.println("--------------------------------");
+        } else if (longPressState == GestureState::FAILED) {
+            Serial.println("--------------------------------");
+            Serial.println("EVENT: Long Press FAILED");
+            Serial.println("--------------------------------");
+        }
+    }
+
+    if (mySwipeTracker.swipeDetected) {
+        Serial.println("--------------------------------");
+        Serial.print("EVENT: Swipe Detected: ");
+        switch (mySwipeTracker.swipeDir) {
+            case SWIPE_DIR_LEFT: Serial.println("LEFT"); break;
+            case SWIPE_DIR_RIGHT: Serial.println("RIGHT"); break;
+            case SWIPE_DIR_UP: Serial.println("UP"); break;
+            case SWIPE_DIR_DOWN: Serial.println("DOWN"); break;
+            default: Serial.println("NONE?"); break;
+        }
+        Serial.print("  From ("); Serial.print(mySwipeTracker.startX); Serial.print(","); Serial.print(mySwipeTracker.startY);
+        Serial.print(") to ("); Serial.print(mySwipeTracker.lastGoodX);Serial.print(","); Serial.print(mySwipeTracker.lastGoodY); Serial.println(")");
+        Serial.println("--------------------------------");
+    }
+
+    // Update previous states for next cycle's change detection in logging
+    prevTapState = tapState;
+    prevLongPressState = longPressState;
+    prevSwipeState = mySwipeTracker.state; // If you want to log swipe drag start etc.
+
+    if (now - lastSceneUpdate >= SCENE_UPDATE_INTERVAL_MS) {
+      lastSceneUpdate = now;
+      update_background();  // move sun/moon, swap day/night, etc.
+    }
+
+    lv_task_handler();
+    delay(10); // Adjust for desired loop rate
+}
+
+
+  /*
   // Explicitly call validate_touch to ensure consistent polling of the touch controller.
   // This helps stabilize the raw touch readings used by the hold logic and other touch checks.
   lv_coord_t dummyX, dummyY;
@@ -655,8 +804,9 @@ void loop() {
 
 
   updateSpriteStackZOrder(); // This should happen after position updates and before lv_task_handler
-
+  
   lv_task_handler(); // This is crucial for LVGL to process updates and redraw
 
   delay(10); // Keep a small delay to yield time
-}
+  */
+//}

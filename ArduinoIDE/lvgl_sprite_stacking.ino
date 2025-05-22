@@ -99,19 +99,16 @@ swipe_tracker_t mySwipeTracker;
 
 // --- For Interrupt Animation on myStack ---
 bool myStackIsPerformingInterruptAnim = false;    
-SpriteStackAnimation* currentInterruptAnimation = nullptr; 
 bool wasMovingToUserDestBeforeInterrupt = false;  
 Point userDestBeforeInterrupt = {0,0};          
 static bool myStack_tap_handled = false; // Flag to debounce taps on myStack for item toggle
 bool show_items = false;
 
-int animIndex = 0; // Index for cycling through interrupt animations
+// Animation object for myStack
+SpriteStackAnimation* currentActiveAnimation = nullptr; // Pointer to the currently active animation
 
-// background update
-// how often to really redraw the *entire* scene:
-static const unsigned long SCENE_UPDATE_INTERVAL_MS = 60UL * 1000UL; // 1 minute
-// remembers when we last called render_scene()
-static unsigned long lastSceneUpdate = 0;
+
+int animIndex = 0; // Index for cycling through interrupt animations
 
 int catFrameCount = sizeof(cat_images) / sizeof(cat_images[0]);
 int frogFrameCount = sizeof(frog_images) / sizeof(frog_images[0]);
@@ -142,6 +139,12 @@ static bool scene_ready = false;
 
 #define CELESTIAL_SIZE 40
 static uint8_t celestial_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR_ALPHA(CELESTIAL_SIZE, CELESTIAL_SIZE)];
+// background update
+// how often to really redraw the *entire* scene:
+static const unsigned long SCENE_UPDATE_INTERVAL_MS = 60UL * 1000UL; // 1 minute
+// remembers when we last called render_scene()
+static unsigned long lastSceneUpdate = 0;
+
 
 void reset_walk_to_random_point_state(); // Forward declaration
 
@@ -179,93 +182,114 @@ static inline lv_color_t interpolate_color(lv_color_t c1, lv_color_t c2, float t
   return lv_color_mix(c2, c1, mix);
 }
 
+bool is_tap_on_sprite(SpriteStack& sprite, lv_coord_t tap_x, lv_coord_t tap_y) {
+    if (sprite.getLVGLObject() == nullptr) return false;
+
+    Point spritePos = sprite.getPosition();
+    int w, h;
+    sprite.getDim(w,h);
+    float zoomFactor = sprite.getZoomPercent() / 100.0f;
+    int displayW = w * zoomFactor;
+    int displayH = h * zoomFactor;
+
+    int hitbox_half_width = displayW / 2;
+    int hitbox_half_height = displayH / 2;
+
+    //bool hit = (tap_x >= spritePos.x - hitbox_half_width && tap_x <= spritePos.x + hitbox_half_width &&
+    //            tap_y >= spritePos.y - hitbox_half_height && tap_y <= spritePos.y + hitbox_half_height);
+
+    bool hit = is_within_square_bounds_center(tap_x, tap_y, spritePos.x, spritePos.y, hitbox_half_width, hitbox_half_height);
+    return hit;
+}
+
 // -------------------------
 // SCENE RENDERING
 // (render_scene - unchanged from previous version with correct layering)
 // -------------------------
-
 void update_background(){
-  unsigned long now = millis();
-  
-  if (now - lastSceneUpdate >= SCENE_UPDATE_INTERVAL_MS) {
-      lastSceneUpdate = now;
-      I2C_BM8563_TimeTypeDef ts;
-      rtc.getTime(&ts);
-      int current_hour   = ts.hours;
-      int current_minute = ts.minutes;
+  if(scene_ready){
+    unsigned long now = millis();
+    
+    if (now - lastSceneUpdate >= SCENE_UPDATE_INTERVAL_MS) {
+        lastSceneUpdate = now;
+        I2C_BM8563_TimeTypeDef ts;
+        rtc.getTime(&ts);
+        int current_hour   = ts.hours;
+        int current_minute = ts.minutes;
 
-      //Serial.print(current_hour);
-      //Serial.print(" : ");
-      //Serial.println(current_minute);
+        //Serial.print(current_hour);
+        //Serial.print(" : ");
+        //Serial.println(current_minute);
 
-      int total_minutes_today = current_hour * 60 + current_minute;
-      bool is_daytime = (current_hour >= 6 && current_hour < 19);
+        int total_minutes_today = current_hour * 60 + current_minute;
+        bool is_daytime = (current_hour >= 6 && current_hour < 19);
 
-      lv_color_t sky_color_top   = is_daytime ? lv_color_hex(0x4682B4) : lv_color_hex(0x000000); 
-      lv_color_t sky_color_bottom = is_daytime ? lv_color_hex(0x87CEEB) : lv_color_hex(0x2F4F4F); 
-      lv_obj_set_style_bg_color(top_bg, sky_color_top, 0);
-      lv_obj_set_style_bg_grad_color(top_bg, sky_color_bottom, 0);
-      lv_obj_set_style_bg_grad_dir(top_bg, LV_GRAD_DIR_VER, 0);
-      lv_obj_set_style_bg_opa(top_bg, LV_OPA_COVER, 0);
+        lv_color_t sky_color_top   = is_daytime ? lv_color_hex(0x4682B4) : lv_color_hex(0x000000); 
+        lv_color_t sky_color_bottom = is_daytime ? lv_color_hex(0x87CEEB) : lv_color_hex(0x2F4F4F); 
+        lv_obj_set_style_bg_color(top_bg, sky_color_top, 0);
+        lv_obj_set_style_bg_grad_color(top_bg, sky_color_bottom, 0);
+        lv_obj_set_style_bg_grad_dir(top_bg, LV_GRAD_DIR_VER, 0);
+        lv_obj_set_style_bg_opa(top_bg, LV_OPA_COVER, 0);
 
-      lv_color_t ground_color_top   = is_daytime ? lv_color_hex(0x3CB371) : lv_color_hex(0x2E8B57); 
-      lv_color_t ground_color_bottom = is_daytime ? lv_color_hex(0x98FB98) : lv_color_hex(0x006400); 
-      lv_obj_set_style_bg_color(bottom_bg, ground_color_top, 0);
-      lv_obj_set_style_bg_grad_color(bottom_bg, ground_color_bottom, 0);
-      lv_obj_set_style_bg_grad_dir(bottom_bg, LV_GRAD_DIR_VER, 0);
-      lv_obj_set_style_bg_opa(bottom_bg, LV_OPA_COVER, 0);
+        lv_color_t ground_color_top   = is_daytime ? lv_color_hex(0x3CB371) : lv_color_hex(0x2E8B57); 
+        lv_color_t ground_color_bottom = is_daytime ? lv_color_hex(0x98FB98) : lv_color_hex(0x006400); 
+        lv_obj_set_style_bg_color(bottom_bg, ground_color_top, 0);
+        lv_obj_set_style_bg_grad_color(bottom_bg, ground_color_bottom, 0);
+        lv_obj_set_style_bg_grad_dir(bottom_bg, LV_GRAD_DIR_VER, 0);
+        lv_obj_set_style_bg_opa(bottom_bg, LV_OPA_COVER, 0);
 
-      float time_progress_celestial; 
-      if (is_daytime) { 
-        time_progress_celestial = constrain((float)(total_minutes_today - (6 * 60)) / (13 * 60.0f), 0.0f, 1.0f);
-      } else { 
-        int minutes_into_night = (total_minutes_today >= (19 * 60)) ? (total_minutes_today - (19 * 60)) : (total_minutes_today + (24*60) - (19*60));
-        time_progress_celestial = constrain((float)minutes_into_night / (11 * 60.0f), 0.0f, 1.0f);
-      }
-      
-      float celestial_angle_rad = PI * time_progress_celestial; 
+        float time_progress_celestial; 
+        if (is_daytime) { 
+          time_progress_celestial = constrain((float)(total_minutes_today - (6 * 60)) / (13 * 60.0f), 0.0f, 1.0f);
+        } else { 
+          int minutes_into_night = (total_minutes_today >= (19 * 60)) ? (total_minutes_today - (19 * 60)) : (total_minutes_today + (24*60) - (19*60));
+          time_progress_celestial = constrain((float)minutes_into_night / (11 * 60.0f), 0.0f, 1.0f);
+        }
+        
+        float celestial_angle_rad = PI * time_progress_celestial; 
 
-      const int screen_width = lv_obj_get_width(lv_scr_act());
-      const int sky_height = lv_obj_get_height(top_bg);
-      //Serial.println(sky_height);
-      
-      const int orbit_center_x = screen_width / 2;
-      const int orbit_radius_x = screen_width / 2;
-      const int orbit_radius_y = sky_height * 0.8f; 
-      const int horizon_y_offset = sky_height; 
+        const int screen_width = lv_obj_get_width(lv_scr_act());
+        const int sky_height = lv_obj_get_height(top_bg);
+        Serial.println(sky_height);
+        
+        const int orbit_center_x = screen_width / 2;
+        const int orbit_radius_x = screen_width / 2;
+        const int orbit_radius_y = sky_height * 0.8f; 
+        const int horizon_y_offset = sky_height; 
 
-      int celestial_pos_x = orbit_center_x - cosf(celestial_angle_rad) * orbit_radius_x;
-      int celestial_pos_y = horizon_y_offset - sinf(celestial_angle_rad) * orbit_radius_y;
+        int celestial_pos_x = orbit_center_x - cosf(celestial_angle_rad) * orbit_radius_x;
+        int celestial_pos_y = horizon_y_offset - sinf(celestial_angle_rad) * orbit_radius_y;
 
-      lv_color_t body_center_color = is_daytime ? lv_color_hex(0xFFFF00) : lv_color_hex(0xE0E0E0); 
-      lv_color_t body_edge_color   = is_daytime ? lv_color_hex(0xFFCC00) : lv_color_hex(0xB0B0B0);
+        lv_color_t body_center_color = is_daytime ? lv_color_hex(0xFFFF00) : lv_color_hex(0xE0E0E0); 
+        lv_color_t body_edge_color   = is_daytime ? lv_color_hex(0xFFCC00) : lv_color_hex(0xB0B0B0);
 
-      lv_canvas_fill_bg(celestial_canvas, lv_color_black(), LV_OPA_TRANSP); 
-      int body_radius = CELESTIAL_SIZE / 2; 
-      
-      for (int y_px = 0; y_px < CELESTIAL_SIZE; y_px++) {
-        for (int x_px = 0; x_px < CELESTIAL_SIZE; x_px++) {
-          int dx = x_px - CELESTIAL_SIZE / 2;
-          int dy = y_px - CELESTIAL_SIZE / 2;
-          float dist_from_center = sqrtf(dx*dx + dy*dy);
-          if (dist_from_center <= body_radius) {
-            float normalized_dist = dist_from_center / body_radius; 
-            lv_color_t px_color = interpolate_color(body_center_color, body_edge_color, powf(normalized_dist, 1.5f));
-            lv_canvas_set_px_color(celestial_canvas, x_px, y_px, px_color);
-            lv_opa_t px_opa = (lv_opa_t)(LV_OPA_COVER * (1.0f - normalized_dist)); 
-            lv_canvas_set_px_opa(celestial_canvas, x_px, y_px, px_opa);
-          } else {
-            lv_canvas_set_px_opa(celestial_canvas, x_px, y_px, LV_OPA_TRANSP); 
+        lv_canvas_fill_bg(celestial_canvas, lv_color_black(), LV_OPA_TRANSP); 
+        int body_radius = CELESTIAL_SIZE / 2; 
+        
+        for (int y_px = 0; y_px < CELESTIAL_SIZE; y_px++) {
+          for (int x_px = 0; x_px < CELESTIAL_SIZE; x_px++) {
+            int dx = x_px - CELESTIAL_SIZE / 2;
+            int dy = y_px - CELESTIAL_SIZE / 2;
+            float dist_from_center = sqrtf(dx*dx + dy*dy);
+            if (dist_from_center <= body_radius) {
+              float normalized_dist = dist_from_center / body_radius; 
+              lv_color_t px_color = interpolate_color(body_center_color, body_edge_color, powf(normalized_dist, 1.5f));
+              lv_canvas_set_px_color(celestial_canvas, x_px, y_px, px_color);
+              lv_opa_t px_opa = (lv_opa_t)(LV_OPA_COVER * (1.0f - normalized_dist)); 
+              lv_canvas_set_px_opa(celestial_canvas, x_px, y_px, px_opa);
+            } else {
+              lv_canvas_set_px_opa(celestial_canvas, x_px, y_px, LV_OPA_TRANSP); 
+            }
           }
         }
-      }
 
-      lv_obj_set_pos(celestial_canvas, celestial_pos_x - CELESTIAL_SIZE / 2, celestial_pos_y - CELESTIAL_SIZE / 2);
-      lv_obj_invalidate(celestial_canvas); 
+        lv_obj_set_pos(celestial_canvas, celestial_pos_x - CELESTIAL_SIZE / 2, celestial_pos_y - CELESTIAL_SIZE / 2);
+        lv_obj_invalidate(celestial_canvas); 
 
-      lv_obj_move_background(bottom_bg);        
-      lv_obj_move_background(celestial_canvas); 
-      lv_obj_move_background(top_bg);
+        lv_obj_move_background(bottom_bg);        
+        lv_obj_move_background(celestial_canvas); 
+        lv_obj_move_background(top_bg);
+    }
   }
 }
 
@@ -295,6 +319,7 @@ void create_scene(lv_obj_t* parent = nullptr) {
   lastSceneUpdate = millis() - SCENE_UPDATE_INTERVAL_MS - 100;
   scene_ready = true;        
 }
+
 
 
 // -------------------------
@@ -479,6 +504,7 @@ void test_user_and_random_walk(SpriteStack &sprite_stack, Point &currentPos) {
 }
 */
 
+/*
 void handle_interrupt_animation_state() {
     if (myStackIsPerformingInterruptAnim && currentInterruptAnimation != nullptr) {
         if (!currentInterruptAnimation->isActive()) {
@@ -499,6 +525,7 @@ void handle_interrupt_animation_state() {
         }
     }
 }
+*/
 
 /*
 void test_anims() {
@@ -569,6 +596,11 @@ void setup() {
 
   lv_xiao_touch_init();
   Serial.println("Touch initialized.");
+  lv_indev_t *indev = lv_indev_get_next(nullptr);
+  lv_indev_enable(indev, false);
+
+  //lv_indev_t* indev = lv_indev_get_next(NULL);
+  //lv_indev_disable(indev);
 
   Wire.begin();
   rtc.begin();
@@ -603,21 +635,14 @@ void setup() {
   mySwipeTracker.state = SWIPE_IDLE;
   mySwipeTracker.swipeDetected = false;
 
-  // initially renders here setting scene_ready to true
-  create_scene();
+  create_scene(mainScreen);
 
   randomSeed(analogRead(A0));
   Serial.println("Random seed set.");
   Serial.println("Setup complete. Starting loop...");
-
-  //lv_task_handler();
-
 }
 
-
-
 void loop() {
-
     // 1. Get debounced touch information
     update_global_touch_info(&currentGlobalTouch);
 
@@ -662,11 +687,26 @@ void loop() {
     static swipe_state_t prevSwipeState = SWIPE_IDLE; // For logging swipe start/end if needed
 
     if (tapState == GestureState::ENDED) {
+        lv_coord_t tap_x = myTapRecognizer.get_tap_x(); // Get X coordinate of the tap
+        lv_coord_t tap_y = myTapRecognizer.get_tap_y(); // Get Y coordinate of the tap
         Serial.println("--------------------------------");
-        Serial.println("EVENT: Tap Detected!");
-        Serial.print("  Tap start X: "); Serial.print(myTapRecognizer.get_tap_x()); // Use TapRecognizer's stored coords
-        Serial.print(", Y: "); Serial.println(myTapRecognizer.get_tap_y());
+        Serial.print("EVENT: Tap Ended at X: "); Serial.print(tap_x);
+        Serial.print(", Y: "); Serial.println(tap_y);
+
+        if (currentActiveAnimation == nullptr || !currentActiveAnimation->isActive()) { // Check if no animation is currently active
+            if (is_tap_on_sprite(myStack, tap_x, tap_y)) {
+                Serial.println("Tap on myStack detected! Starting Dance Animation.");
+                currentActiveAnimation = &DanceAnim; // Set DanceAnim as the current animation
+                currentActiveAnimation->start(); // Start the animation
+            } else {
+                Serial.println("Tap was not on myStack.");
+            }
+        } else {
+            Serial.println("Tap ignored, an animation is already active.");
+        }
         Serial.println("--------------------------------");
+        myTapRecognizer.reset(); // Reset recognizer for next tap
+
     }
 
     if (longPressState != prevLongPressState) {
@@ -710,6 +750,18 @@ void loop() {
     prevSwipeState = mySwipeTracker.state; // If you want to log swipe drag start etc.
 
     update_background();  // move sun/moon, swap day/night, etc.
+
+    // 5. Update active animation
+    if (currentActiveAnimation != nullptr && currentActiveAnimation->isActive()) { // Check if an animation is active
+        currentActiveAnimation->update(); // Update the animation's state
+        if (!currentActiveAnimation->isActive()) { // Check if animation just finished
+            Serial.println("Animation finished.");
+            currentActiveAnimation = nullptr; // Clear the active animation pointer
+        }
+    }
+
+    // 6. Update Sprite Stack
+    myStack.update(); // Update the visual state of myStack
 
     lv_task_handler();
     delay(10); // Adjust for desired loop rate

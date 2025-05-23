@@ -11,72 +11,8 @@
 #include <math.h>                 // For math functions like atan2, sqrt, cos, sin
 #include "catch_game.h"           // Catching game logic
 #include "I2C_BM8563.h"           // RTC library
-
-
-// -------------------------
-// SPRITE IMAGE DECLARATIONS
-// (Your image declarations remain the same)
-// -------------------------
-// Black Cat sprite images
-#include "black_cat_true_color_alpha.h" 
-LV_IMG_DECLARE(black_cat000); LV_IMG_DECLARE(black_cat001); LV_IMG_DECLARE(black_cat002);
-LV_IMG_DECLARE(black_cat003); LV_IMG_DECLARE(black_cat004); LV_IMG_DECLARE(black_cat005);
-LV_IMG_DECLARE(black_cat006); LV_IMG_DECLARE(black_cat007); LV_IMG_DECLARE(black_cat008);
-LV_IMG_DECLARE(black_cat009); LV_IMG_DECLARE(black_cat010); LV_IMG_DECLARE(black_cat011);
-LV_IMG_DECLARE(black_cat012); LV_IMG_DECLARE(black_cat013); LV_IMG_DECLARE(black_cat014);
-LV_IMG_DECLARE(black_cat015);
-
-const lv_img_dsc_t *cat_images[] = {
-  &black_cat000, &black_cat001, &black_cat002, &black_cat003, &black_cat004,
-  &black_cat005, &black_cat006, &black_cat007, &black_cat008, &black_cat009,
-  &black_cat010, &black_cat011, &black_cat012, &black_cat013, &black_cat014,
-  &black_cat015
-};
-
-// Ball sprite images
-#include "ball_sprites_true_color_alpha.h" 
-LV_IMG_DECLARE(bb000); LV_IMG_DECLARE(bb001); LV_IMG_DECLARE(bb002);
-LV_IMG_DECLARE(bb003); LV_IMG_DECLARE(bb004); LV_IMG_DECLARE(bb005);
-LV_IMG_DECLARE(bb006); LV_IMG_DECLARE(bb007); LV_IMG_DECLARE(bb008);
-LV_IMG_DECLARE(bb009); LV_IMG_DECLARE(bb010); LV_IMG_DECLARE(bb011);
-LV_IMG_DECLARE(bb012); LV_IMG_DECLARE(bb013); LV_IMG_DECLARE(bb014);
-LV_IMG_DECLARE(bb015);
-
-const lv_img_dsc_t *ball_images[] = {
-  &bb000, &bb001, &bb002, &bb003, &bb004,
-  &bb005, &bb006, &bb007, &bb008, &bb009,
-  &bb010, &bb011, &bb012, &bb013, &bb014,
-  &bb015
-};
-
-#include "burger.h"
-LV_IMG_DECLARE(burger_1); LV_IMG_DECLARE(burger_2); LV_IMG_DECLARE(burger_3);
-LV_IMG_DECLARE(burger_4); LV_IMG_DECLARE(burger_5); LV_IMG_DECLARE(burger_6);
-LV_IMG_DECLARE(burger_7); LV_IMG_DECLARE(burger_8);
-
-const lv_img_dsc_t *burger_images[] = {
-  &burger_1, &burger_2, &burger_3, &burger_4, &burger_5,
-  &burger_6, &burger_7, &burger_8
-};
-
-// Frog sprite images
-#include "frog.h" 
-LV_IMG_DECLARE(frog_1); LV_IMG_DECLARE(frog_2);
-LV_IMG_DECLARE(frog_3); LV_IMG_DECLARE(frog_4); LV_IMG_DECLARE(frog_5);
-LV_IMG_DECLARE(frog_6); LV_IMG_DECLARE(frog_7);
-
-const lv_img_dsc_t *frog_images[] = {
-  &frog_1, &frog_2, &frog_3, &frog_4, &frog_5,
-  &frog_6, &frog_7
-};
-
-#include "bed.h"
-LV_IMG_DECLARE(bed_1); LV_IMG_DECLARE(bed_2); LV_IMG_DECLARE(bed_3);
-LV_IMG_DECLARE(bed_4); LV_IMG_DECLARE(bed_5); LV_IMG_DECLARE(bed_6);
-
-const lv_img_dsc_t *bed_images[] = {
-  &bed_1, &bed_2, &bed_3, &bed_4, &bed_5, &bed_6
-};
+#include "sprites.h"              // sprite image declarations
+#include "background.h"           // background functions
 
 
 // -------------------------
@@ -132,18 +68,18 @@ bool inCatchingGame = false;
 I2C_BM8563 rtc(I2C_BM8563_DEFAULT_ADDRESS, Wire); 
 lv_obj_t * mainScreen = NULL;
 
-static lv_obj_t * top_bg = nullptr;
-static lv_obj_t * bottom_bg = nullptr;
-static lv_obj_t* celestial_canvas= nullptr;
-static bool scene_ready = false;
+//static lv_obj_t * top_bg = nullptr;
+//static lv_obj_t * bottom_bg = nullptr;
+//static lv_obj_t* celestial_canvas= nullptr;
+//static bool scene_ready = false;
 
-#define CELESTIAL_SIZE 40
-static uint8_t celestial_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR_ALPHA(CELESTIAL_SIZE, CELESTIAL_SIZE)];
+//#define CELESTIAL_SIZE 40
+//static uint8_t celestial_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR_ALPHA(CELESTIAL_SIZE, CELESTIAL_SIZE)];
 // background update
 // how often to really redraw the *entire* scene:
-static const unsigned long SCENE_UPDATE_INTERVAL_MS = 60UL * 1000UL; // 1 minute
+//static const unsigned long SCENE_UPDATE_INTERVAL_MS = 60UL * 1000UL; // 1 minute
 // remembers when we last called render_scene()
-static unsigned long lastSceneUpdate = 0;
+//static unsigned long lastSceneUpdate = 0;
 
 
 void reset_walk_to_random_point_state(); // Forward declaration
@@ -206,6 +142,9 @@ bool is_tap_on_sprite(SpriteStack& sprite, lv_coord_t tap_x, lv_coord_t tap_y) {
 // SCENE RENDERING
 // (render_scene - unchanged from previous version with correct layering)
 // -------------------------
+
+/*
+
 void update_background(){
   if(scene_ready){
     unsigned long now = millis();
@@ -320,7 +259,7 @@ void create_scene(lv_obj_t* parent = nullptr) {
   scene_ready = true;        
 }
 
-
+*/
 
 // -------------------------
 // MOVEMENT & Y-SORTING FUNCTIONS
@@ -614,7 +553,7 @@ void setup() {
 
   myStack.create(mainScreen);
   myStack.setPosition(g_spritePosition.x, g_spritePosition.y);
-  myStack.setZoom(100.0f);
+  myStack.setZoom(150.0f);
   Serial.println("myStack (cat) created.");
 
   // Burger and Bed are initially not created, they will be created when show_items becomes true.
@@ -749,7 +688,7 @@ void loop() {
     prevLongPressState = longPressState;
     prevSwipeState = mySwipeTracker.state; // If you want to log swipe drag start etc.
 
-    update_background();  // move sun/moon, swap day/night, etc.
+    update_background(rtc);  // move sun/moon, swap day/night, etc.
 
     // 5. Update active animation
     if (currentActiveAnimation != nullptr && currentActiveAnimation->isActive()) { // Check if an animation is active

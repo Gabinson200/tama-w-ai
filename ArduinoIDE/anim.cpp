@@ -1,6 +1,98 @@
 #include "anim.h"
+#include "touch.h"
 #include <math.h>
 #include <Arduino.h>
+
+// forward‐declare the helper for checking a tap on the stack
+static bool is_stack_tapped(const SpriteStack &stack, TapGestureRecognizer &tapRec);
+static bool is_stack_tapped(const SpriteStack &stack, const TouchInfo &touch);
+
+// static storage from before…
+static SpriteStackAnimation* _anims[7];
+static const int _animCount = 7;
+static bool        _inited    = false;
+static int         _animIndex = 0;
+static SpriteStackAnimation* _current = nullptr;
+
+// track the last tap‐ended state
+static bool lastTapEnded = false;
+
+
+void test_anims(SpriteStack &stack, TapGestureRecognizer &tapRec) {
+  // 1) on first-ever call, build your animations once
+  if (!_inited) {
+    _anims[0] = new RotationAnimation(stack, 0, 360, 3000, 0);
+    _anims[1] = new ZoomAnimation    (stack, 0.5*stack.getZoomPercent(), 1*stack.getZoomPercent(), 3000, 0);
+    _anims[2] = new NoNoAnimation    (stack, -25, 25, 3000, 0);
+    _anims[3] = new NodAnimation     (stack, -10, 0, 3000, 0);
+    _anims[4] = new DanceAnimation   (stack, -45, 45, 3000, 0);
+    _anims[5] = new SelectionAnimation(stack, 0, 360, 3000, 0);
+    _anims[6] = new DeselectionAnimation(stack, -15, 15, 3000, 0);
+    _inited = true;
+  }
+
+  // 2) If an animation is running, drive it forward
+  if (_current && _current->isActive()) {
+    _current->update();
+  }
+
+  // 3) tap‐recognizer ended => rising‐edge => start next
+  bool nowEnded = (tapRec.get_state() == GestureState::ENDED);
+  if (nowEnded && !lastTapEnded) {
+    if (is_stack_tapped(stack, tapRec)) {
+      // if no anim in flight, start the next
+      if (! _current || !_current->isActive()) {
+        _current = _anims[_animIndex];
+        _current->start();
+        _animIndex = (_animIndex + 1) % _animCount;
+      }
+    }
+    // reset the recognizer so it can fire again next tap
+    tapRec.reset();
+  }
+  lastTapEnded = nowEnded;
+}
+
+// helper: is touch within the bounding box of the stack?
+// new overload for TapGestureRecognizer:
+static bool is_stack_tapped(const SpriteStack &stack, TapGestureRecognizer &tapRec) {
+  // only fire when the recognizer has just ended a tap
+  if (tapRec.get_state() != GestureState::ENDED) return false;
+
+  // pull the stored release coordinates
+  lv_coord_t tx = tapRec.get_tap_x();
+  lv_coord_t ty = tapRec.get_tap_y();
+
+  Point pos = stack.getPosition();
+  int w, h; stack.getDim(w,h);
+  int halfW = w*stack.getZoomPercent()/200;
+  int halfH = h*stack.getZoomPercent()/200;
+
+  return is_within_square_bounds_center(tx, ty, pos.x, pos.y, halfW, halfH);
+  //return tx >= pos.x-halfW && tx <= pos.x+halfW
+  //    && ty >= pos.y-halfH && ty <= pos.y+halfH;
+}
+
+bool is_stack_tapped(const SpriteStack& sprite, const TouchInfo &touch) {
+    if (sprite.getLVGLObject() == nullptr) return false;
+
+    Point spritePos = sprite.getPosition();
+    int w, h;
+    sprite.getDim(w,h);
+    float zoomFactor = sprite.getZoomPercent() / 100.0f;
+    int displayW = w * zoomFactor;
+    int displayH = h * zoomFactor;
+
+    int hitbox_half_width = displayW / 2;
+    int hitbox_half_height = displayH / 2;
+
+    //bool hit = (tap_x >= spritePos.x - hitbox_half_width && tap_x <= spritePos.x + hitbox_half_width &&
+    //            tap_y >= spritePos.y - hitbox_half_height && tap_y <= spritePos.y + hitbox_half_height);
+
+    bool hit = is_within_square_bounds_center(touch.x, touch.y, spritePos.x, spritePos.y, hitbox_half_width, hitbox_half_height);
+    return hit;
+}
+
 //–––––– Base class implementation ––––––
 
 SpriteStackAnimation::SpriteStackAnimation(uint32_t duration, uint32_t delay)

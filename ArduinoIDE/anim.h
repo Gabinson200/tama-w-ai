@@ -142,6 +142,7 @@ class NoNoAnimation : public SpriteStackAnimation {
 /*
  * @brief Animates the nod which changes the pitch to down and then back up, between the start and end angle similar to the no-no anim
  */
+
 class NodAnimation : public SpriteStackAnimation {
   public:
     /**
@@ -236,5 +237,10 @@ class DeselectionAnimation : public SpriteStackAnimation {
     float _endAngle;
     float _basePitch, _baseYaw, _baseRoll;
 };
+
+/*
+ * @brief On each loop: advance any active animation, and if a new tap occurs on `stack`, start the next one.
+ */
+void test_anims(SpriteStack &stack, TapGestureRecognizer &tapRec);
 
 #endif

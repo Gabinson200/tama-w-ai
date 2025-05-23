@@ -100,4 +100,6 @@ typedef struct {
 void update_swipe_state(int x_min, int x_max, int y_min, int y_max,
                         int min_swipe_length, swipe_tracker_t *tracker,
                         const TouchInfo& current_touch_info);
+
+
 #endif

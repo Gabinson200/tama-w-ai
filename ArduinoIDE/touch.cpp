@@ -2,87 +2,79 @@
 #include "lv_xiao_round_screen.h" // For chsc6x_is_pressed, chsc6x_get_xy etc.
 // Arduino.h and math.h are included via touch.h if needed by its own content
 
-// Debounce and update_global_touch_info state (copied from previous correct version)
-static const unsigned long DEBOUNCE_TOUCH_PRESS_MS = 20;
+static const unsigned long DEBOUNCE_TOUCH_PRESS_MS   = 20;
 static const unsigned long DEBOUNCE_TOUCH_RELEASE_MS = 20;
-static lv_coord_t last_known_x_for_release = 0;
-static lv_coord_t last_known_y_for_release = 0;
+static const lv_coord_t   MAX_JUMP                   = 30;  // tune as needed
+
+// persisted between calls
 static bool current_debounced_pressed_state = false;
 static bool last_raw_touch_state_for_debounce = false;
 static unsigned long last_state_change_time_for_debounce = 0;
 
+// for jump‐filtering
+static lv_coord_t last_known_x_for_release = 0;
+static lv_coord_t last_known_y_for_release = 0;
+static bool       have_last_good = false;
+static bool       last_debounced = false;
+
 
 void update_global_touch_info(TouchInfo* info) {
-    static const lv_coord_t MAX_JUMP = 30;         // adjust after testing
-    static lv_coord_t last_good_x = 0, last_good_y = 0;
-    static bool have_last_good = false;
+  // 1) read raw
+  bool raw = chsc6x_is_pressed();
+  unsigned long now = millis();
 
-    // --- 1) Debounce press/release exactly as you had it ---
-    bool raw = chsc6x_is_pressed();
-    unsigned long now = millis();
-    
-    if (raw != last_raw_touch_state_for_debounce) {
-        last_state_change_time_for_debounce = now;
-        last_raw_touch_state_for_debounce = raw;
+  // 2) debounce
+  if (raw != last_raw_touch_state_for_debounce) {
+    last_state_change_time_for_debounce = now;
+    last_raw_touch_state_for_debounce = raw;
+  }
+  if (raw) {
+    if (!current_debounced_pressed_state &&
+        (now - last_state_change_time_for_debounce) >= DEBOUNCE_TOUCH_PRESS_MS) {
+      current_debounced_pressed_state = true;
     }
-
-    if (raw) {
-        if (!current_debounced_pressed_state) {
-            if ((now - last_state_change_time_for_debounce) >= DEBOUNCE_TOUCH_PRESS_MS) {
-                current_debounced_pressed_state = true;
-            }
-        }
-    } else {
-        if (current_debounced_pressed_state) {
-             if ((now - last_state_change_time_for_debounce) >= DEBOUNCE_TOUCH_RELEASE_MS) {
-                current_debounced_pressed_state = false;
-            }
-        }
+  } else {
+    if (current_debounced_pressed_state &&
+        (now - last_state_change_time_for_debounce) >= DEBOUNCE_TOUCH_RELEASE_MS) {
+      current_debounced_pressed_state = false;
     }
+  }
 
-    info->is_pressed = current_debounced_pressed_state;
-    info->timestamp  = now;
+  info->is_pressed = current_debounced_pressed_state;
+  info->timestamp  = now;
 
-    // If finger just went up, clear our jump‐filter state:
-    if (!raw) {
-        have_last_good = false;
+  // 3) seed jump‐filter on the *first* debounced press
+  if (!last_debounced && current_debounced_pressed_state) {
+    lv_coord_t tx, ty;
+    chsc6x_get_xy(&tx, &ty);
+    last_known_x_for_release = constrain(tx, 0, 239);
+    last_known_y_for_release = constrain(ty, 0, 239);
+    have_last_good = true;
+  }
+  last_debounced = current_debounced_pressed_state;
+
+  // 4) while pressed, sample raw & filter jumps
+  if (current_debounced_pressed_state) {
+    lv_coord_t tx, ty;
+    chsc6x_get_xy(&tx, &ty);
+    tx = constrain(tx, 0, 239);
+    ty = constrain(ty, 0, 239);
+
+    if (have_last_good &&
+        abs(tx - last_known_x_for_release) < MAX_JUMP &&
+        abs(ty - last_known_y_for_release) < MAX_JUMP) {
+      last_known_x_for_release = tx;
+      last_known_y_for_release = ty;
     }
-
-    // --- 2) Raw sampling + jump filter ---
-    if (raw) {
-        lv_coord_t tx, ty;
-        chsc6x_get_xy(&tx, &ty);
-        tx = constrain(tx, 0, 239);
-        ty = constrain(ty, 0, 239);
-
-        // If this is our first sample after touch-down, accept it unconditionally:
-        if (!have_last_good) {
-            last_good_x = tx;
-            last_good_y = ty;
-            have_last_good = true;
-        }
-        else {
-            // Otherwise only accept it if it’s not a huge jump
-            if ( abs(tx - last_good_x) < MAX_JUMP &&
-                 abs(ty - last_good_y) < MAX_JUMP ) {
-                last_good_x = tx;
-                last_good_y = ty;
-            }
-            // else: throw away the glitchy tx,ty and keep last_good
-        }
-
-        info->x = last_good_x;
-        info->y = last_good_y;
-
-        // Also update “release” coords so taps can still record the lift-point
-        last_known_x_for_release = last_good_x;
-        last_known_y_for_release = last_good_y;
-    }
-    else {
-        // finger up → freeze at last-known release point
-        info->x = last_known_x_for_release;
-        info->y = last_known_y_for_release;
-    }
+    info->x = last_known_x_for_release;
+    info->y = last_known_y_for_release;
+  }
+  else {
+    // 5) on release, hold onto last good and reset for next press
+    info->x = last_known_x_for_release;
+    info->y = last_known_y_for_release;
+    have_last_good = false;
+  }
 }
 
 
@@ -372,3 +364,4 @@ void update_swipe_state(int x_min, int x_max, int y_min, int y_max, int min_swip
     default: tracker->state = SWIPE_IDLE; swipe_release_debounce_counter = 0; break;
     }
 }
+

@@ -399,8 +399,8 @@ void setup() {
 
   lv_xiao_touch_init();
   Serial.println("Touch initialized.");
-  lv_indev_t *indev = lv_indev_get_next(nullptr);
-  lv_indev_enable(indev, false);
+  //lv_indev_t *indev = lv_indev_get_next(nullptr);
+  //lv_indev_enable(indev, false);
 
   //lv_indev_t* indev = lv_indev_get_next(NULL);
   //lv_indev_disable(indev);

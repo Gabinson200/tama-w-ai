@@ -399,7 +399,7 @@ void setup() {
 
   lv_xiao_touch_init();
   Serial.println("Touch initialized.");
-  //lv_indev_t *indev = lv_indev_get_next(nullptr);
+  //lv_indev_t *indev = lv_indev_get_next(nullptr); //this may be needed if board resets
   //lv_indev_enable(indev, false);
 
   //lv_indev_t* indev = lv_indev_get_next(NULL);
@@ -570,7 +570,7 @@ void loop() {
     myStack.update(); // Update the visual state of myStack
 
     lv_task_handler();
-    delay(2); // Adjust for desired loop rate
+    delay(10); // Adjust for desired loop rate
 }
 
 

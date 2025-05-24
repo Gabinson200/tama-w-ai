@@ -4,6 +4,7 @@
 #include <lvgl.h>
 #include <Arduino.h>
 
+
 struct TouchInfo {
     bool is_pressed = false;
     lv_coord_t x = 0;
@@ -100,6 +101,29 @@ typedef struct {
 void update_swipe_state(int x_min, int x_max, int y_min, int y_max,
                         int min_swipe_length, swipe_tracker_t *tracker,
                         const TouchInfo& current_touch_info);
+
+
+enum class TouchEventType {
+  NONE,
+  TAP,
+  LONG_PRESS_BEGAN,
+  LONG_PRESS_ENDED,
+  SWIPE_LEFT,
+  SWIPE_RIGHT,
+  SWIPE_UP,
+  SWIPE_DOWN,
+  // …whatever else you need…
+};
+
+struct TouchEvent {
+  TouchEventType type = TouchEventType::NONE;
+  int16_t x = 0, y = 0;    // e.g. for tap or long-press coords
+  int16_t end_x = 0, end_y = 0; // for long press so draging can be added later on
+  swipe_dir_t swipeDir;    // if you want direction enum
+};
+
+TouchEvent get_touch_event();
+
 
 
 #endif

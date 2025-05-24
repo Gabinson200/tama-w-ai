@@ -394,3 +394,135 @@ void update_swipe_state(int x_min, int x_max, int y_min, int y_max, int min_swip
     }
 }
 
+// ---------------------------------------------------------------
+//               TOUCH EVENT CODE
+// ---------------------------------------------------------------
+TouchEvent get_touch_event() {
+  static TapGestureRecognizer  myTapRecognizer(500, 48, 80);
+  static LongPressGestureRecognizer myLongPressRecognizer(1000, 24);
+  static swipe_tracker_t       mySwipeTracker = {SWIPE_IDLE};
+
+  TouchInfo currentGlobalTouch;
+  update_global_touch_info(&currentGlobalTouch);
+
+  // 2. Update LongPress and Swipe recognizers FIRST
+    myLongPressRecognizer.update(currentGlobalTouch);
+    update_swipe_state(0, 239, 0, 239, 60, &mySwipeTracker, currentGlobalTouch); // Params: x_min, x_max, y_min, y_max, min_swipe_length
+
+    // 3. Notify TapRecognizer if the current press has been claimed by an ongoing LongPress/Swipe
+    if (currentGlobalTouch.is_pressed) {
+        if (myLongPressRecognizer.get_state() == GestureState::BEGAN || myLongPressRecognizer.get_state() == GestureState::FAILED ||
+            mySwipeTracker.state == SWIPE_DRAGGING) {
+            myTapRecognizer.notify_current_press_is_claimed();
+        }
+    }
+    // TapRecognizer's internal 'ongoing_press_is_claimed_by_other' flag is now managed by its own update/reset logic combined with this notification.
+
+    // 4. Update Tap recognizer
+    myTapRecognizer.update(currentGlobalTouch);
+
+    // 5. Handle Gesture Completion Conflicts
+    if (myTapRecognizer.is_waiting_for_confirmation()) {
+        bool cancel_tap_due_to_conflict = false;
+        if (mySwipeTracker.swipeDetected) {
+            Serial.println("Loop: Swipe completed, tap was pending. Cancelling tap."); // Debug
+            cancel_tap_due_to_conflict = true;
+        }
+        if (myLongPressRecognizer.get_state() == GestureState::ENDED) {
+            Serial.println("Loop: Long press ended, tap was pending. Cancelling tap."); // Debug
+            cancel_tap_due_to_conflict = true;
+        }
+
+        if (cancel_tap_due_to_conflict && !currentGlobalTouch.is_pressed) { // Ensure it was a release
+            myTapRecognizer.cancel();
+        }
+    }
+
+    // 6. React to Gesture States
+    GestureState tapState = myTapRecognizer.get_state();
+    GestureState longPressState = myLongPressRecognizer.get_state();
+    static GestureState prevTapState = GestureState::IDLE;
+    static GestureState prevLongPressState = GestureState::IDLE;
+    static swipe_state_t prevSwipeState = SWIPE_IDLE; // For logging swipe start/end if needed
+    TouchEvent ev; // pack up event
+
+
+    if (tapState == GestureState::ENDED) {
+        // could wrap the outputs to a debug argument
+        lv_coord_t tap_x = myTapRecognizer.get_tap_x(); // Get X coordinate of the tap
+        lv_coord_t tap_y = myTapRecognizer.get_tap_y(); // Get Y coordinate of the tap
+        Serial.println("--------------------------------");
+        Serial.print("EVENT: Tap Ended at X: "); Serial.print(tap_x);
+        Serial.print(", Y: "); Serial.println(tap_y);
+        ev.type = TouchEventType::TAP;
+        ev.x = myTapRecognizer.get_tap_x();
+        ev.y = myTapRecognizer.get_tap_y();
+        //myTapRecognizer.reset();
+        /*
+        if (currentActiveAnimation == nullptr || !currentActiveAnimation->isActive()) { // Check if no animation is currently active
+            if (is_tap_on_sprite(myStack, tap_x, tap_y)) {
+                Serial.println("Tap on myStack detected! Starting Dance Animation.");
+                currentActiveAnimation = &DanceAnim; // Set DanceAnim as the current animation
+                currentActiveAnimation->start(); // Start the animation
+            } else {
+                Serial.println("Tap was not on myStack.");
+            }
+        } else {
+            Serial.println("Tap ignored, an animation is already active.");
+        }
+        Serial.println("--------------------------------");
+        myTapRecognizer.reset(); // Reset recognizer for next tap
+        */
+
+    }
+
+    if (longPressState != prevLongPressState) {
+        if (longPressState == GestureState::BEGAN) {
+            Serial.println("--------------------------------");
+            Serial.print("EVENT: Long Press BEGAN at X:"); Serial.print(myLongPressRecognizer.recognized_at_x);
+            Serial.print(" Y:"); Serial.println(myLongPressRecognizer.recognized_at_y);
+            Serial.println("--------------------------------");
+            ev.type = TouchEventType::LONG_PRESS_BEGAN;
+            ev.x = myLongPressRecognizer.recognized_at_x;
+            ev.y = myLongPressRecognizer.recognized_at_y;
+        } else if (longPressState == GestureState::ENDED) {
+            Serial.println("--------------------------------");
+            Serial.println("EVENT: Long Press ENDED");
+            // For Long Press end, currentGlobalTouch reflects the release point if needed for other logic
+            Serial.print("  Touch Release X: "); Serial.print(currentGlobalTouch.x);
+            Serial.print(", Y: "); Serial.println(currentGlobalTouch.y);
+            Serial.println("--------------------------------");
+            ev.type = TouchEventType::LONG_PRESS_ENDED;
+            ev.end_x = currentGlobalTouch.x;
+            ev.end_y = currentGlobalTouch.y;
+        } else if (longPressState == GestureState::FAILED) {
+            Serial.println("--------------------------------");
+            Serial.println("EVENT: Long Press FAILED");
+            Serial.println("--------------------------------");
+        }
+    }
+
+    if (mySwipeTracker.swipeDetected) {
+        Serial.println("--------------------------------");
+        Serial.print("EVENT: Swipe Detected: ");
+        switch (mySwipeTracker.swipeDir) {
+            case SWIPE_DIR_LEFT: ev.type = TouchEventType::SWIPE_LEFT; Serial.println("LEFT"); break;
+            case SWIPE_DIR_RIGHT: ev.type = TouchEventType::SWIPE_RIGHT; Serial.println("RIGHT"); break;
+            case SWIPE_DIR_UP: ev.type = TouchEventType::SWIPE_UP; Serial.println("UP"); break;
+            case SWIPE_DIR_DOWN: ev.type = TouchEventType::SWIPE_DOWN; Serial.println("DOWN"); break;
+            default: Serial.println("NONE?"); break;
+        }
+        Serial.print("  From ("); Serial.print(mySwipeTracker.startX); Serial.print(","); Serial.print(mySwipeTracker.startY);
+        Serial.print(") to ("); Serial.print(mySwipeTracker.lastGoodX);Serial.print(","); Serial.print(mySwipeTracker.lastGoodY); Serial.println(")");
+        Serial.println("--------------------------------");
+    }
+
+    // Update previous states for next cycle's change detection in logging
+    prevTapState = tapState;
+    prevLongPressState = longPressState;
+    prevSwipeState = mySwipeTracker.state; // If you want to log swipe drag start etc.
+
+    return ev;
+}
+
+

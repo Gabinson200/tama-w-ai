@@ -62,10 +62,10 @@ void update_background(I2C_BM8563 rtc){
         
         const int orbit_center_x = screen_width / 2;
         const int orbit_radius_x = screen_width / 2;
-        const int orbit_radius_y = sky_height * 0.8f; 
-        const int horizon_y_offset = sky_height * 0.8f; 
+        const int orbit_radius_y = sky_height / 2; 
+        const int horizon_y_offset = sky_height; 
 
-        int celestial_pos_x = orbit_center_x - cosf(celestial_angle_rad) * orbit_radius_x;
+        int celestial_pos_x = orbit_center_x + cosf(celestial_angle_rad) * orbit_radius_x;
         int celestial_pos_y = horizon_y_offset - sinf(celestial_angle_rad) * orbit_radius_y;
 
         lv_color_t body_center_color = is_daytime ? lv_color_hex(0xFFFF00) : lv_color_hex(0xE0E0E0); 
@@ -91,7 +91,7 @@ void update_background(I2C_BM8563 rtc){
           }
         }
 
-        lv_obj_set_pos(celestial_canvas, celestial_pos_x, celestial_pos_y);
+        lv_obj_set_pos(celestial_canvas, celestial_pos_x - CELESTIAL_SIZE/2, celestial_pos_y - CELESTIAL_SIZE/2);
         lv_obj_invalidate(celestial_canvas); 
 
         lv_obj_move_background(bottom_bg);        

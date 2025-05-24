@@ -28,10 +28,10 @@ const unsigned long USER_DESTINATION_HOLD_DURATION = 2000;
 const unsigned long POST_USER_TARGET_COOLDOWN_DURATION = 7000; 
 
 // --- Global Variables for Touch and Gestures ---
-TouchInfo currentGlobalTouch;
-TapGestureRecognizer myTapRecognizer(500, 48, 20); // Max Duration 150ms, Max Move 15px, Confirmation Delay 80ms - Adjust as needed
-LongPressGestureRecognizer myLongPressRecognizer(1000, 240); // Min Duration 700ms, Max Move 20px - Adjust as needed
-swipe_tracker_t mySwipeTracker;
+//TouchInfo currentGlobalTouch;
+//TapGestureRecognizer myTapRecognizer(500, 48, 20); // Max Duration 150ms, Max Move 15px, Confirmation Delay 80ms - Adjust as needed
+//LongPressGestureRecognizer myLongPressRecognizer(1000, 240); // Min Duration 700ms, Max Move 20px - Adjust as needed
+//swipe_tracker_t mySwipeTracker;
 
 // --- For Interrupt Animation on myStack ---
 bool myStackIsPerformingInterruptAnim = false;    
@@ -399,7 +399,7 @@ void setup() {
 
   lv_xiao_touch_init();
   Serial.println("Touch initialized.");
-  //lv_indev_t *indev = lv_indev_get_next(nullptr); //this may be needed if board resets
+  //lv_indev_t *indev = lv_indev_get_next(nullptr);
   //lv_indev_enable(indev, false);
 
   //lv_indev_t* indev = lv_indev_get_next(NULL);
@@ -435,8 +435,8 @@ void setup() {
   */
 
   // --- Initialize Swipe Tracker ---
-  mySwipeTracker.state = SWIPE_IDLE;
-  mySwipeTracker.swipeDetected = false;
+  //mySwipeTracker.state = SWIPE_IDLE;
+  //mySwipeTracker.swipeDetected = false;
 
   create_scene(mainScreen);
 
@@ -446,6 +446,8 @@ void setup() {
 }
 
 void loop() {
+
+  /*
     // 1. Get debounced touch information
     update_global_touch_info(&currentGlobalTouch);
 
@@ -495,22 +497,6 @@ void loop() {
         Serial.println("--------------------------------");
         Serial.print("EVENT: Tap Ended at X: "); Serial.print(tap_x);
         Serial.print(", Y: "); Serial.println(tap_y);
-        /*
-        if (currentActiveAnimation == nullptr || !currentActiveAnimation->isActive()) { // Check if no animation is currently active
-            if (is_tap_on_sprite(myStack, tap_x, tap_y)) {
-                Serial.println("Tap on myStack detected! Starting Dance Animation.");
-                currentActiveAnimation = &DanceAnim; // Set DanceAnim as the current animation
-                currentActiveAnimation->start(); // Start the animation
-            } else {
-                Serial.println("Tap was not on myStack.");
-            }
-        } else {
-            Serial.println("Tap ignored, an animation is already active.");
-        }
-        Serial.println("--------------------------------");
-        myTapRecognizer.reset(); // Reset recognizer for next tap
-        */
-
     }
 
     if (longPressState != prevLongPressState) {
@@ -548,13 +534,37 @@ void loop() {
         Serial.println("--------------------------------");
     }
 
-    // Update previous states for next cycle's change detection in logging
-    prevTapState = tapState;
-    prevLongPressState = longPressState;
-    prevSwipeState = mySwipeTracker.state; // If you want to log swipe drag start etc.
+      // Update previous states for next cycle's change detection in logging
+      prevTapState = tapState;
+      prevLongPressState = longPressState;
+      prevSwipeState = mySwipeTracker.state; // If you want to log swipe drag start etc.
+    
+  */
+
+    TouchEvent ev = get_touch_event();
+
+    // dispatch it
+    switch(ev.type) {
+      case TouchEventType::TAP:
+        Serial.println("tapped");
+        break;
+      case TouchEventType::LONG_PRESS_BEGAN:
+        Serial.println("pressed");
+        break;
+      case TouchEventType::SWIPE_LEFT:
+        Serial.println("swipe left");
+        break;
+      case TouchEventType::SWIPE_RIGHT:
+        Serial.println("swipe right");
+        break;
+
+      default:
+        break;
+    }
 
     update_background(rtc);  // move sun/moon, swap day/night, etc.
 
+    /*
     // 5. Update active animation
     if (currentActiveAnimation != nullptr && currentActiveAnimation->isActive()) { // Check if an animation is active
         currentActiveAnimation->update(); // Update the animation's state
@@ -565,12 +575,13 @@ void loop() {
     }
 
     test_anims(myStack, myTapRecognizer);
+    */
 
     // 6. Update Sprite Stack
     myStack.update(); // Update the visual state of myStack
 
     lv_task_handler();
-    delay(10); // Adjust for desired loop rate
+    delay(2); // Adjust for desired loop rate
 }
 
 

@@ -11,77 +11,20 @@
 #include <math.h>                 // For math functions like atan2, sqrt, cos, sin
 #include "catch_game.h"           // Catching game logic
 #include "I2C_BM8563.h"           // RTC library
-
-
-// -------------------------
-// SPRITE IMAGE DECLARATIONS
-// (Your image declarations remain the same)
-// -------------------------
-// Black Cat sprite images
-#include "black_cat_true_color_alpha.h" 
-LV_IMG_DECLARE(black_cat000); LV_IMG_DECLARE(black_cat001); LV_IMG_DECLARE(black_cat002);
-LV_IMG_DECLARE(black_cat003); LV_IMG_DECLARE(black_cat004); LV_IMG_DECLARE(black_cat005);
-LV_IMG_DECLARE(black_cat006); LV_IMG_DECLARE(black_cat007); LV_IMG_DECLARE(black_cat008);
-LV_IMG_DECLARE(black_cat009); LV_IMG_DECLARE(black_cat010); LV_IMG_DECLARE(black_cat011);
-LV_IMG_DECLARE(black_cat012); LV_IMG_DECLARE(black_cat013); LV_IMG_DECLARE(black_cat014);
-LV_IMG_DECLARE(black_cat015);
-
-const lv_img_dsc_t *cat_images[] = {
-  &black_cat000, &black_cat001, &black_cat002, &black_cat003, &black_cat004,
-  &black_cat005, &black_cat006, &black_cat007, &black_cat008, &black_cat009,
-  &black_cat010, &black_cat011, &black_cat012, &black_cat013, &black_cat014,
-  &black_cat015
-};
-
-// Ball sprite images
-#include "ball_sprites_true_color_alpha.h" 
-LV_IMG_DECLARE(bb000); LV_IMG_DECLARE(bb001); LV_IMG_DECLARE(bb002);
-LV_IMG_DECLARE(bb003); LV_IMG_DECLARE(bb004); LV_IMG_DECLARE(bb005);
-LV_IMG_DECLARE(bb006); LV_IMG_DECLARE(bb007); LV_IMG_DECLARE(bb008);
-LV_IMG_DECLARE(bb009); LV_IMG_DECLARE(bb010); LV_IMG_DECLARE(bb011);
-LV_IMG_DECLARE(bb012); LV_IMG_DECLARE(bb013); LV_IMG_DECLARE(bb014);
-LV_IMG_DECLARE(bb015);
-
-const lv_img_dsc_t *ball_images[] = {
-  &bb000, &bb001, &bb002, &bb003, &bb004,
-  &bb005, &bb006, &bb007, &bb008, &bb009,
-  &bb010, &bb011, &bb012, &bb013, &bb014,
-  &bb015
-};
-
-#include "burger.h"
-LV_IMG_DECLARE(burger_1); LV_IMG_DECLARE(burger_2); LV_IMG_DECLARE(burger_3);
-LV_IMG_DECLARE(burger_4); LV_IMG_DECLARE(burger_5); LV_IMG_DECLARE(burger_6);
-LV_IMG_DECLARE(burger_7); LV_IMG_DECLARE(burger_8);
-
-const lv_img_dsc_t *burger_images[] = {
-  &burger_1, &burger_2, &burger_3, &burger_4, &burger_5,
-  &burger_6, &burger_7, &burger_8
-};
-
-// Frog sprite images
-#include "frog.h" 
-LV_IMG_DECLARE(frog_1); LV_IMG_DECLARE(frog_2);
-LV_IMG_DECLARE(frog_3); LV_IMG_DECLARE(frog_4); LV_IMG_DECLARE(frog_5);
-LV_IMG_DECLARE(frog_6); LV_IMG_DECLARE(frog_7);
-
-const lv_img_dsc_t *frog_images[] = {
-  &frog_1, &frog_2, &frog_3, &frog_4, &frog_5,
-  &frog_6, &frog_7
-};
-
-#include "bed.h"
-LV_IMG_DECLARE(bed_1); LV_IMG_DECLARE(bed_2); LV_IMG_DECLARE(bed_3);
-LV_IMG_DECLARE(bed_4); LV_IMG_DECLARE(bed_5); LV_IMG_DECLARE(bed_6);
-
-const lv_img_dsc_t *bed_images[] = {
-  &bed_1, &bed_2, &bed_3, &bed_4, &bed_5, &bed_6
-};
-
+#include "sprites.h"              // sprite image declarations
+#include "background.h"           // background functions
+#include "input_manager.h"
 
 // -------------------------
 // GLOBAL VARIABLES & OBJECTS
 // -------------------------
+
+InputManager inputManager(
+  /*x_min=*/0,   /*x_max=*/239,
+  /*y_min=*/0,   /*y_max=*/239,
+  /*min_swipe_len=*/30
+);
+
 
 // --- State Flags & Movement Variables ---
 bool hasUserDestination = false;                
@@ -93,17 +36,20 @@ const unsigned long POST_USER_TARGET_COOLDOWN_DURATION = 7000;
 
 // --- Global Variables for Touch and Gestures ---
 TouchInfo currentGlobalTouch;
-TapGestureRecognizer myTapRecognizer(200, 48, 80); // Max Duration 150ms, Max Move 15px, Confirmation Delay 80ms - Adjust as needed
+TapGestureRecognizer myTapRecognizer(500, 48, 20); // Max Duration 150ms, Max Move 15px, Confirmation Delay 80ms - Adjust as needed
 LongPressGestureRecognizer myLongPressRecognizer(1000, 240); // Min Duration 700ms, Max Move 20px - Adjust as needed
 swipe_tracker_t mySwipeTracker;
 
 // --- For Interrupt Animation on myStack ---
 bool myStackIsPerformingInterruptAnim = false;    
-SpriteStackAnimation* currentInterruptAnimation = nullptr; 
 bool wasMovingToUserDestBeforeInterrupt = false;  
 Point userDestBeforeInterrupt = {0,0};          
 static bool myStack_tap_handled = false; // Flag to debounce taps on myStack for item toggle
 bool show_items = false;
+
+// Animation object for myStack
+SpriteStackAnimation* currentActiveAnimation = nullptr; // Pointer to the currently active animation
+
 
 int animIndex = 0; // Index for cycling through interrupt animations
 
@@ -113,7 +59,7 @@ int burgerFrameCount = sizeof(burger_images) / sizeof(burger_images[0]);
 int bedFrameCount = sizeof(bed_images) / sizeof(bed_images[0]);
 int ballFrameCount = sizeof(ball_images) / sizeof(ball_images[0]);
 
-SpriteStack myStack(cat_images, catFrameCount, 0, 1.0, 1.0, 150.0f);
+SpriteStack myStack(cat_images, catFrameCount, 0, 1.0, 1.0, 200.0f);
 SpriteStack burgerStack(burger_images, burgerFrameCount, 0, 1.0, 1.0, 100.0f);
 SpriteStack bedStack(bed_images, bedFrameCount, 0, 1.0, 1.0, 100.0f);
 
@@ -129,13 +75,6 @@ bool inCatchingGame = false;
 I2C_BM8563 rtc(I2C_BM8563_DEFAULT_ADDRESS, Wire); 
 lv_obj_t * mainScreen = NULL;
 
-static lv_obj_t * top_bg = nullptr;
-static lv_obj_t * bottom_bg = nullptr;
-static lv_obj_t* celestial_canvas= nullptr;
-static bool scene_ready = false;
-
-#define CELESTIAL_SIZE 40
-static uint8_t celestial_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR_ALPHA(CELESTIAL_SIZE, CELESTIAL_SIZE)];
 
 void reset_walk_to_random_point_state(); // Forward declaration
 
@@ -173,107 +112,25 @@ static inline lv_color_t interpolate_color(lv_color_t c1, lv_color_t c2, float t
   return lv_color_mix(c2, c1, mix);
 }
 
-// -------------------------
-// SCENE RENDERING
-// (render_scene - unchanged from previous version with correct layering)
-// -------------------------
-void render_scene(lv_obj_t* parent = nullptr) {
-  if (!scene_ready) {
-    if (!parent) parent = lv_scr_act(); 
-    top_bg = lv_obj_create(parent);
-    lv_obj_remove_style_all(top_bg); 
-    lv_obj_set_size(top_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) / 2);
-    lv_obj_align(top_bg, LV_ALIGN_TOP_LEFT, 0, 0);
+bool is_tap_on_sprite(SpriteStack& sprite, lv_coord_t tap_x, lv_coord_t tap_y) {
+    if (sprite.getLVGLObject() == nullptr) return false;
 
-    celestial_canvas = lv_canvas_create(parent);
-    lv_canvas_set_buffer(celestial_canvas, celestial_buf,
-                         CELESTIAL_SIZE, CELESTIAL_SIZE,
-                         LV_IMG_CF_TRUE_COLOR_ALPHA);
-    lv_obj_remove_style_all(celestial_canvas);
-    lv_obj_set_style_bg_opa(celestial_canvas, LV_OPA_TRANSP, 0); 
-    lv_obj_set_style_border_width(celestial_canvas, 0, 0);
+    Point spritePos = sprite.getPosition();
+    int w, h;
+    sprite.getDim(w,h);
+    float zoomFactor = sprite.getZoomPercent() / 100.0f;
+    int displayW = w * zoomFactor;
+    int displayH = h * zoomFactor;
 
-    bottom_bg = lv_obj_create(parent);
-    lv_obj_remove_style_all(bottom_bg); 
-    lv_obj_set_size(bottom_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) / 2);
-    lv_obj_align(bottom_bg, LV_ALIGN_BOTTOM_LEFT, 0, 0);
-    
-    scene_ready = true;
-  }
+    int hitbox_half_width = displayW / 2;
+    int hitbox_half_height = displayH / 2;
 
-  I2C_BM8563_TimeTypeDef ts;
-  rtc.getTime(&ts);
-  int current_hour   = ts.hours;
-  int current_minute = ts.minutes;
+    //bool hit = (tap_x >= spritePos.x - hitbox_half_width && tap_x <= spritePos.x + hitbox_half_width &&
+    //            tap_y >= spritePos.y - hitbox_half_height && tap_y <= spritePos.y + hitbox_half_height);
 
-  int total_minutes_today = current_hour * 60 + current_minute;
-  bool is_daytime = (current_hour >= 6 && current_hour < 19);
-
-  lv_color_t sky_color_top   = is_daytime ? lv_color_hex(0x4682B4) : lv_color_hex(0x000000); 
-  lv_color_t sky_color_bottom = is_daytime ? lv_color_hex(0x87CEEB) : lv_color_hex(0x2F4F4F); 
-  lv_obj_set_style_bg_color(top_bg, sky_color_top, 0);
-  lv_obj_set_style_bg_grad_color(top_bg, sky_color_bottom, 0);
-  lv_obj_set_style_bg_grad_dir(top_bg, LV_GRAD_DIR_VER, 0);
-  lv_obj_set_style_bg_opa(top_bg, LV_OPA_COVER, 0);
-
-  lv_color_t ground_color_top   = is_daytime ? lv_color_hex(0x3CB371) : lv_color_hex(0x2E8B57); 
-  lv_color_t ground_color_bottom = is_daytime ? lv_color_hex(0x98FB98) : lv_color_hex(0x006400); 
-  lv_obj_set_style_bg_color(bottom_bg, ground_color_top, 0);
-  lv_obj_set_style_bg_grad_color(bottom_bg, ground_color_bottom, 0);
-  lv_obj_set_style_bg_grad_dir(bottom_bg, LV_GRAD_DIR_VER, 0);
-  lv_obj_set_style_bg_opa(bottom_bg, LV_OPA_COVER, 0);
-
-  float time_progress_celestial; 
-  if (is_daytime) { 
-    time_progress_celestial = constrain((float)(total_minutes_today - (6 * 60)) / (13 * 60.0f), 0.0f, 1.0f);
-  } else { 
-    int minutes_into_night = (total_minutes_today >= (19 * 60)) ? (total_minutes_today - (19 * 60)) : (total_minutes_today + (24*60) - (19*60));
-    time_progress_celestial = constrain((float)minutes_into_night / (11 * 60.0f), 0.0f, 1.0f);
-  }
-  
-  float celestial_angle_rad = PI * time_progress_celestial; 
-
-  const int screen_width = lv_obj_get_width(lv_scr_act());
-  const int sky_height = lv_obj_get_height(top_bg); 
-  
-  const int orbit_center_x = screen_width / 2;
-  const int orbit_radius_x = screen_width / 2;
-  const int orbit_radius_y = sky_height * 0.8f; 
-  const int horizon_y_offset = sky_height; 
-
-  int celestial_pos_x = orbit_center_x - cosf(celestial_angle_rad) * orbit_radius_x;
-  int celestial_pos_y = horizon_y_offset - sinf(celestial_angle_rad) * orbit_radius_y;
-
-  lv_color_t body_center_color = is_daytime ? lv_color_hex(0xFFFF00) : lv_color_hex(0xE0E0E0); 
-  lv_color_t body_edge_color   = is_daytime ? lv_color_hex(0xFFCC00) : lv_color_hex(0xB0B0B0);
-
-  lv_canvas_fill_bg(celestial_canvas, lv_color_black(), LV_OPA_TRANSP); 
-  int body_radius = CELESTIAL_SIZE / 2; 
-  
-  for (int y_px = 0; y_px < CELESTIAL_SIZE; y_px++) {
-    for (int x_px = 0; x_px < CELESTIAL_SIZE; x_px++) {
-      int dx = x_px - CELESTIAL_SIZE / 2;
-      int dy = y_px - CELESTIAL_SIZE / 2;
-      float dist_from_center = sqrtf(dx*dx + dy*dy);
-      if (dist_from_center <= body_radius) {
-        float normalized_dist = dist_from_center / body_radius; 
-        lv_color_t px_color = interpolate_color(body_center_color, body_edge_color, powf(normalized_dist, 1.5f));
-        lv_canvas_set_px_color(celestial_canvas, x_px, y_px, px_color);
-        lv_opa_t px_opa = (lv_opa_t)(LV_OPA_COVER * (1.0f - normalized_dist)); 
-        lv_canvas_set_px_opa(celestial_canvas, x_px, y_px, px_opa);
-      } else {
-        lv_canvas_set_px_opa(celestial_canvas, x_px, y_px, LV_OPA_TRANSP); 
-      }
-    }
-  }
-  lv_obj_set_pos(celestial_canvas, celestial_pos_x - CELESTIAL_SIZE / 2, celestial_pos_y - CELESTIAL_SIZE / 2);
-  lv_obj_invalidate(celestial_canvas); 
-
-  lv_obj_move_background(bottom_bg);        
-  lv_obj_move_background(celestial_canvas); 
-  lv_obj_move_background(top_bg);           
+    bool hit = is_within_square_bounds_center(tap_x, tap_y, spritePos.x, spritePos.y, hitbox_half_width, hitbox_half_height);
+    return hit;
 }
-
 
 // -------------------------
 // MOVEMENT & Y-SORTING FUNCTIONS
@@ -457,6 +314,7 @@ void test_user_and_random_walk(SpriteStack &sprite_stack, Point &currentPos) {
 }
 */
 
+/*
 void handle_interrupt_animation_state() {
     if (myStackIsPerformingInterruptAnim && currentInterruptAnimation != nullptr) {
         if (!currentInterruptAnimation->isActive()) {
@@ -477,6 +335,7 @@ void handle_interrupt_animation_state() {
         }
     }
 }
+*/
 
 /*
 void test_anims() {
@@ -547,6 +406,11 @@ void setup() {
 
   lv_xiao_touch_init();
   Serial.println("Touch initialized.");
+  //lv_indev_t *indev = lv_indev_get_next(nullptr); //this may be needed if board resets
+  //lv_indev_enable(indev, false);
+
+  //lv_indev_t* indev = lv_indev_get_next(NULL);
+  //lv_indev_disable(indev);
 
   Wire.begin();
   rtc.begin();
@@ -560,7 +424,7 @@ void setup() {
 
   myStack.create(mainScreen);
   myStack.setPosition(g_spritePosition.x, g_spritePosition.y);
-  myStack.setZoom(100.0f);
+  myStack.setZoom(200.0f);
   Serial.println("myStack (cat) created.");
 
   // Burger and Bed are initially not created, they will be created when show_items becomes true.
@@ -581,12 +445,15 @@ void setup() {
   mySwipeTracker.state = SWIPE_IDLE;
   mySwipeTracker.swipeDetected = false;
 
+  create_scene(mainScreen);
+
   randomSeed(analogRead(A0));
   Serial.println("Random seed set.");
   Serial.println("Setup complete. Starting loop...");
 }
 
 void loop() {
+    /*
     // 1. Get debounced touch information
     update_global_touch_info(&currentGlobalTouch);
 
@@ -631,12 +498,29 @@ void loop() {
     static swipe_state_t prevSwipeState = SWIPE_IDLE; // For logging swipe start/end if needed
 
     if (tapState == GestureState::ENDED) {
+        lv_coord_t tap_x = myTapRecognizer.get_tap_x(); // Get X coordinate of the tap
+        lv_coord_t tap_y = myTapRecognizer.get_tap_y(); // Get Y coordinate of the tap
         Serial.println("--------------------------------");
-        Serial.println("EVENT: Tap Detected!");
-        Serial.print("  Tap start X: "); Serial.print(myTapRecognizer.get_tap_x()); // Use TapRecognizer's stored coords
-        Serial.print(", Y: "); Serial.println(myTapRecognizer.get_tap_y());
+        Serial.print("EVENT: Tap Ended at X: "); Serial.print(tap_x);
+        Serial.print(", Y: "); Serial.println(tap_y);
+        /*
+        if (currentActiveAnimation == nullptr || !currentActiveAnimation->isActive()) { // Check if no animation is currently active
+            if (is_tap_on_sprite(myStack, tap_x, tap_y)) {
+                Serial.println("Tap on myStack detected! Starting Dance Animation.");
+                currentActiveAnimation = &DanceAnim; // Set DanceAnim as the current animation
+                currentActiveAnimation->start(); // Start the animation
+            } else {
+                Serial.println("Tap was not on myStack.");
+            }
+        } else {
+            Serial.println("Tap ignored, an animation is already active.");
+        }
         Serial.println("--------------------------------");
+        myTapRecognizer.reset(); // Reset recognizer for next tap
+        
+
     }
+
 
     if (longPressState != prevLongPressState) {
         if (longPressState == GestureState::BEGAN) {
@@ -677,6 +561,102 @@ void loop() {
     prevTapState = tapState;
     prevLongPressState = longPressState;
     prevSwipeState = mySwipeTracker.state; // If you want to log swipe drag start etc.
+
+    */
+
+    // 1) update touch & gesture state
+    inputManager.update();
+
+    // 2) dump any new events
+    for (auto &ev : inputManager.events()) {
+      switch (ev.type) {
+        case InputEventType::Tap:
+          Serial.print("Tap @ (");
+          Serial.print(ev.x);
+          Serial.print(", ");
+          Serial.print(ev.y);
+          Serial.println(")");
+          break;
+
+        case InputEventType::LongPressStart:
+          Serial.print("Long Press START @ (");
+          Serial.print(ev.x);
+          Serial.print(", ");
+          Serial.print(ev.y);
+          Serial.println(")");
+          break;
+
+        case InputEventType::LongPressEnd:
+          Serial.print("Long Press END @ (");
+          Serial.print(ev.x);
+          Serial.print(", ");
+          Serial.print(ev.y);
+          Serial.println(")");
+          break;
+
+        case InputEventType::SwipeLeft:
+          Serial.print("Swipe LEFT from (");
+          Serial.print(ev.x);
+          Serial.print(", ");
+          Serial.print(ev.y);
+          Serial.print(") dx=");
+          Serial.print(ev.dx);
+          Serial.print(" dy=");
+          Serial.println(ev.dy);
+          break;
+
+        case InputEventType::SwipeRight:
+          Serial.print("Swipe RIGHT from (");
+          Serial.print(ev.x);
+          Serial.print(", ");
+          Serial.print(ev.y);
+          Serial.print(") dx=");
+          Serial.print(ev.dx);
+          Serial.print(" dy=");
+          Serial.println(ev.dy);
+          break;
+
+        case InputEventType::SwipeUp:
+          Serial.print("Swipe UP from (");
+          Serial.print(ev.x);
+          Serial.print(", ");
+          Serial.print(ev.y);
+          Serial.print(") dx=");
+          Serial.print(ev.dx);
+          Serial.print(" dy=");
+          Serial.println(ev.dy);
+          break;
+
+        case InputEventType::SwipeDown:
+          Serial.print("Swipe DOWN from (");
+          Serial.print(ev.x);
+          Serial.print(", ");
+          Serial.print(ev.y);
+          Serial.print(") dx=");
+          Serial.print(ev.dx);
+          Serial.print(" dy=");
+          Serial.println(ev.dy);
+          break;
+      }
+    }
+
+    // 3) clear for next loop
+    inputManager.clearEvents();
+    
+    // 5. Update active animation
+    if (currentActiveAnimation != nullptr && currentActiveAnimation->isActive()) { // Check if an animation is active
+        currentActiveAnimation->update(); // Update the animation's state
+        if (!currentActiveAnimation->isActive()) { // Check if animation just finished
+            Serial.println("Animation finished.");
+            currentActiveAnimation = nullptr; // Clear the active animation pointer
+        }
+    }
+
+    test_anims(myStack, myTapRecognizer);
+
+    update_background(rtc);  // move sun/moon, swap day/night, etc.
+    // 6. Update Sprite Stack
+    myStack.update(); // Update the visual state of myStack
 
     lv_task_handler();
     delay(10); // Adjust for desired loop rate

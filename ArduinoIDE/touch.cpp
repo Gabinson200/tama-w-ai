@@ -2,86 +2,98 @@
 #include "lv_xiao_round_screen.h" // For chsc6x_is_pressed, chsc6x_get_xy etc.
 // Arduino.h and math.h are included via touch.h if needed by its own content
 
-// Debounce and update_global_touch_info state (copied from previous correct version)
-static const unsigned long DEBOUNCE_TOUCH_PRESS_MS = 20;
-static const unsigned long DEBOUNCE_TOUCH_RELEASE_MS = 20;
-static lv_coord_t last_known_x_for_release = 0;
-static lv_coord_t last_known_y_for_release = 0;
+static const unsigned long DEBOUNCE_TOUCH_PRESS_MS   = 2;
+static const unsigned long DEBOUNCE_TOUCH_RELEASE_MS = 2;
+static const lv_coord_t   MAX_JUMP                   = 30;  // tune as needed
+
+// persisted between calls
 static bool current_debounced_pressed_state = false;
 static bool last_raw_touch_state_for_debounce = false;
 static unsigned long last_state_change_time_for_debounce = 0;
 
+// for jump‐filtering
+static lv_coord_t last_known_x_for_release = 0;
+static lv_coord_t last_known_y_for_release = 0;
+static bool       have_last_good = false;
+static bool       last_debounced = false;
+
 
 void update_global_touch_info(TouchInfo* info) {
-    static const lv_coord_t MAX_JUMP = 30;         // adjust after testing
-    static lv_coord_t last_good_x = 0, last_good_y = 0;
-    static bool have_last_good = false;
+  // 1) read raw
+  bool raw = chsc6x_is_pressed();
+  unsigned long now = millis();
 
-    // --- 1) Debounce press/release exactly as you had it ---
-    bool raw = chsc6x_is_pressed();
-    unsigned long now = millis();
-    
-    if (raw != last_raw_touch_state_for_debounce) {
-        last_state_change_time_for_debounce = now;
-        last_raw_touch_state_for_debounce = raw;
+  // 2) debounce
+  if (raw != last_raw_touch_state_for_debounce) {
+    last_state_change_time_for_debounce = now;
+    last_raw_touch_state_for_debounce = raw;
+  }
+  if (raw) {
+    if (!current_debounced_pressed_state &&
+        (now - last_state_change_time_for_debounce) >= DEBOUNCE_TOUCH_PRESS_MS) {
+      current_debounced_pressed_state = true;
     }
-
-    if (raw) {
-        if (!current_debounced_pressed_state) {
-            if ((now - last_state_change_time_for_debounce) >= DEBOUNCE_TOUCH_PRESS_MS) {
-                current_debounced_pressed_state = true;
-            }
-        }
-    } else {
-        if (current_debounced_pressed_state) {
-             if ((now - last_state_change_time_for_debounce) >= DEBOUNCE_TOUCH_RELEASE_MS) {
-                current_debounced_pressed_state = false;
-            }
-        }
+  } else {
+    if (current_debounced_pressed_state &&
+        (now - last_state_change_time_for_debounce) >= DEBOUNCE_TOUCH_RELEASE_MS) {
+      current_debounced_pressed_state = false;
     }
+  }
 
-    info->is_pressed = current_debounced_pressed_state;
-    info->timestamp  = now;
+  info->is_pressed = current_debounced_pressed_state;
+  info->timestamp  = now;
 
-    // If finger just went up, clear our jump‐filter state:
-    if (!raw) {
+  // Reset have_last_good only when a NEW press starts
+    if (!last_debounced && current_debounced_pressed_state) {
         have_last_good = false;
     }
+    last_debounced = current_debounced_pressed_state;
 
-    // --- 2) Raw sampling + jump filter ---
-    if (raw) {
-        lv_coord_t tx, ty;
+    // 3 & 4) Get & Filter Coords
+    if (current_debounced_pressed_state) {
+        lv_coord_t tx = -1, ty = -1;
         chsc6x_get_xy(&tx, &ty);
-        tx = constrain(tx, 0, 239);
-        ty = constrain(ty, 0, 239);
 
-        // If this is our first sample after touch-down, accept it unconditionally:
-        if (!have_last_good) {
-            last_good_x = tx;
-            last_good_y = ty;
-            have_last_good = true;
-        }
-        else {
-            // Otherwise only accept it if it’s not a huge jump
-            if ( abs(tx - last_good_x) < MAX_JUMP &&
-                 abs(ty - last_good_y) < MAX_JUMP ) {
-                last_good_x = tx;
-                last_good_y = ty;
+        if (tx != -1 && ty != -1) { // We got a valid reading!
+            tx = constrain(tx, 0, 239);
+            ty = constrain(ty, 0, 239);
+
+            // Update last_known_x/y if it's the first good one or jump is small
+            if (!have_last_good || (abs(tx - last_known_x_for_release) < MAX_JUMP && abs(ty - last_known_y_for_release) < MAX_JUMP)) {
+                last_known_x_for_release = tx;
+                last_known_y_for_release = ty;
+                have_last_good = true; // Mark that we now have a good point
             }
-            // else: throw away the glitchy tx,ty and keep last_good
+            // Set info->x/y to the latest good value
+            info->x = last_known_x_for_release;
+            info->y = last_known_y_for_release;
+
+        } else { // chsc6x_get_xy FAILED!
+            // If we already have a good point, keep using it for info->x/y.
+            // If we don't have one yet, info->x/y will remain whatever it was
+            // (likely 0,0 or stale), but crucially, we DON'T update
+            // last_known_x/y with bad data.
+            if (have_last_good) {
+                info->x = last_known_x_for_release;
+                info->y = last_known_y_for_release;
+            } else {
+                // We are pressed but have NO good coords yet.
+                // Keep info x/y as 0,0 for now.
+                info->x = 0;
+                info->y = 0;
+            }
         }
-
-        info->x = last_good_x;
-        info->y = last_good_y;
-
-        // Also update “release” coords so taps can still record the lift-point
-        last_known_x_for_release = last_good_x;
-        last_known_y_for_release = last_good_y;
-    }
-    else {
-        // finger up → freeze at last-known release point
-        info->x = last_known_x_for_release;
-        info->y = last_known_y_for_release;
+    } else { // Not pressed
+        // On release, use the last good known coordinates
+        if (have_last_good) {
+            info->x = last_known_x_for_release;
+            info->y = last_known_y_for_release;
+        } else {
+            // Released without ever getting a good coord. Report 0,0.
+            info->x = 0;
+            info->y = 0;
+        }
+        have_last_good = false; // Reset for the next press cycle
     }
 }
 
@@ -168,7 +180,7 @@ void TapGestureRecognizer::reset() {
     ongoing_press_is_claimed_by_other = false; // [MODIFIED] Crucial reset point
     tap_x = 0; // Reset release coordinates
     tap_y = 0;
-    // Serial.println("Tap: RESET called, ongoing_press_is_claimed_by_other is false."); // Debug
+    //Serial.println("Tap: RESET called, ongoing_press_is_claimed_by_other is false."); // Debug
 }
 
 void TapGestureRecognizer::update(const TouchInfo& current_touch_info) {
@@ -191,7 +203,7 @@ void TapGestureRecognizer::update(const TouchInfo& current_touch_info) {
 
     if (waiting_for_tap_confirmation) {
         if (current_touch_info.is_pressed && current_touch_info.timestamp >= tap_potential_release_timestamp) {
-            // Serial.println("Tap Confirmed ABORTED: New press."); // Debug
+            //Serial.println("Tap Confirmed ABORTED: New press."); // Debug
             waiting_for_tap_confirmation = false;
             current_state = GestureState::FAILED;
         } else if (!current_touch_info.is_pressed) { // Still released
@@ -240,6 +252,8 @@ void TapGestureRecognizer::update(const TouchInfo& current_touch_info) {
                         tap_potential_release_timestamp = current_touch_info.timestamp;
                         tap_x = current_touch_info.x; // [MODIFIED] Store release coordinates
                         tap_y = current_touch_info.y; // [MODIFIED]
+                        //Serial.print("FUNCTION: Tap Ended at X: "); Serial.print(tap_x);
+                        //Serial.print(", Y: "); Serial.println(tap_y);
                         //Serial.println("Tap POSSIBLE: Release OK, waiting confirmation.");// Debug
                     } else {
                         current_state = GestureState::FAILED;
@@ -343,12 +357,19 @@ static swipe_dir_t compute_swipe_dir(lv_coord_t sX, lv_coord_t sY, lv_coord_t eX
 }
 static const int MAX_SWIPE_JUMP = 80;
 void update_swipe_state(int x_min, int x_max, int y_min, int y_max, int min_swipe_length, swipe_tracker_t *tracker, const TouchInfo& current_touch_info) {
-    tracker->swipeDetected = false; bool is_touch_active = current_touch_info.is_pressed;
-    lv_coord_t touch_x = current_touch_info.x; lv_coord_t touch_y = current_touch_info.y;
+    tracker->swipeDetected = false;
+    bool is_touch_active = current_touch_info.is_pressed;
+    lv_coord_t touch_x = current_touch_info.x;
+    lv_coord_t touch_y = current_touch_info.y;
     static uint8_t swipe_release_debounce_counter = 0;
+
     switch (tracker->state) {
-    case SWIPE_IDLE: swipe_release_debounce_counter = 0;
+    case SWIPE_IDLE:
+        swipe_release_debounce_counter = 0;
         if (is_touch_active && is_within_square_bounds(touch_x, touch_y, x_min, x_max, y_min, y_max)) {
+            if (touch_x == 0 && touch_y == 0) {
+                break; // Stay in SWIPE_IDLE, don't start the swipe yet.
+            }
             tracker->startX = touch_x; tracker->startY = touch_y; tracker->currentX = touch_x; tracker->currentY = touch_y;
             tracker->lastGoodX = touch_x; tracker->lastGoodY = touch_y; tracker->state = SWIPE_PRESSED;
         } break;
@@ -372,3 +393,4 @@ void update_swipe_state(int x_min, int x_max, int y_min, int y_max, int min_swip
     default: tracker->state = SWIPE_IDLE; swipe_release_debounce_counter = 0; break;
     }
 }
+

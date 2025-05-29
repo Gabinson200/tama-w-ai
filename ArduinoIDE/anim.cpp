@@ -5,25 +5,21 @@
 
 
 
-AnimQueue animQueue;
-SpriteStackAnimation* currentAnim = nullptr;
+
+std::vector<SpriteStackAnimation*> activeAnims;
+
 
 void driveAnimations() {
-  // if no anim active, grab next from queue
-  if( !currentAnim ) {
-    currentAnim = animQueue.dequeue();
-    if(currentAnim) currentAnim->start();
-  }
-
-  // drive the active anim
-  if(currentAnim) {
-    currentAnim->update();
-    if(!currentAnim->isActive()) {
-      //delete currentAnim;
-      currentAnim = nullptr;
+  // Walk backwards so we can erase safely
+  for (int i = activeAnims.size() - 1; i >= 0; --i) {
+    auto *anim = activeAnims[i];
+    anim->update();              
+    if (!anim->isActive()) {
+      activeAnims.erase(activeAnims.begin() + i);
     }
   }
 }
+
 
 // helper: is touch within the bounding box of the stack?
 // new overload for TapGestureRecognizer:

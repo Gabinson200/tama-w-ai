@@ -555,13 +555,13 @@ void loop() {
           //auto* a = SelectionAnimation(myStack, 0, 360, 3000, 0);
           // drop it if the queue is already full
 
-          animQueue.enqueue(&SelectAnim);
+          start_anim(&SelectAnim);
         }
 
         if(is_stack_tapped(burgerStack, ev.x, ev.y)) {
           //auto* a = SelectionAnimation(myStack, 0, 360, 3000, 0);
           // drop it if the queue is already full
-          animQueue.enqueue(&burgerSelectAnim);
+          start_anim(&burgerSelectAnim);
         }
         break;
       case TouchEventType::LONG_PRESS_BEGAN:
@@ -591,13 +591,13 @@ void loop() {
       case TouchEventType::SWIPE_LEFT:
         Serial.println("swipe left");
         if(is_stack_tapped(myStack, ev.x, ev.y)) {
-          animQueue.enqueue(&turnLeft);
+          start_anim(&turnLeft);
         }
         break;
       case TouchEventType::SWIPE_RIGHT:
         Serial.println("swipe right");
         if(is_stack_tapped(myStack, ev.x, ev.y)) {
-          animQueue.enqueue(&turnRight);
+          start_anim(&turnRight);
         }
         break;
 

@@ -6,7 +6,7 @@
 
 #include "touch.h"
 #include <Arduino.h>
-//#include <lvgl.h>
+#include <vector>
 #include "sprite_stack.h"
 #define USE_ARDUINO_GFX_LIBRARY
 
@@ -76,12 +76,14 @@ struct AnimQueue {
   }
 };
 
-/// Singleton queue and “current” animation
-extern AnimQueue animQueue;
-extern SpriteStackAnimation* currentAnim;
-
-/// Call this from loop() each pass
+extern std::vector<SpriteStackAnimation*> activeAnims;
 void driveAnimations();
+
+//helper
+inline void start_anim(SpriteStackAnimation* anim) {
+  anim->start();
+  activeAnims.push_back(anim);
+}
 
 /**
  * @brief Animates the roll angle (rotation) of a SpriteStack.

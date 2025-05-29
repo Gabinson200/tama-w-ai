@@ -513,7 +513,9 @@ TouchEvent get_touch_event() {
             default: Serial.println("NONE?"); break;
         }
         Serial.print("  From ("); Serial.print(mySwipeTracker.startX); Serial.print(","); Serial.print(mySwipeTracker.startY);
+        ev.x = mySwipeTracker.startX; ev.y = mySwipeTracker.startY;
         Serial.print(") to ("); Serial.print(mySwipeTracker.lastGoodX);Serial.print(","); Serial.print(mySwipeTracker.lastGoodY); Serial.println(")");
+        ev.end_x = mySwipeTracker.lastGoodX; ev.end_y = mySwipeTracker.lastGoodY;
         Serial.println("--------------------------------");
     }
 

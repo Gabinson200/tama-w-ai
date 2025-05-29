@@ -72,12 +72,16 @@ lv_obj_t * mainScreen = NULL;
 void reset_walk_to_random_point_state(); // Forward declaration
 
 // Animation objects for myStack (used for interrupt)
-RotationAnimation MyRotationAnim(myStack, 0, 360, 3000, 0); // No delay for interrupt
+RotationAnimation MyRotationAnim(myStack, 0, 360, 3000, 0, false); // No delay for interrupt
 NoNoAnimation NoNoAnim(myStack, -25, 25, 1500, 0);
 NodAnimation NodAnim(myStack, -10, 0, 3000, 0);
 DanceAnimation DanceAnim(myStack, -45, 45, 3000, 0);
 DeselectionAnimation DeseAnim(myStack, -15, 15, 3000, 0);
 SelectionAnimation SelectAnim(myStack, 0, 360, 3000, 0);
+
+RotationAnimation turnLeft(myStack, 0, 22, 1000, 0, true); 
+RotationAnimation turnRight(myStack, 0, -22, 1000, 0, true);
+
 
 SelectionAnimation burgerSelectAnim(burgerStack, 0, 360, 3000, 0);
 
@@ -547,15 +551,54 @@ void loop() {
     switch(ev.type) {
       case TouchEventType::TAP:
         Serial.println("tapped");
+        if(is_stack_tapped(myStack, ev.x, ev.y)) {
+          //auto* a = SelectionAnimation(myStack, 0, 360, 3000, 0);
+          // drop it if the queue is already full
+
+          animQueue.enqueue(&SelectAnim);
+        }
+
+        if(is_stack_tapped(burgerStack, ev.x, ev.y)) {
+          //auto* a = SelectionAnimation(myStack, 0, 360, 3000, 0);
+          // drop it if the queue is already full
+          animQueue.enqueue(&burgerSelectAnim);
+        }
         break;
       case TouchEventType::LONG_PRESS_BEGAN:
         Serial.println("pressed");
+        if(is_stack_tapped(myStack, ev.x, ev.y)) {
+          Serial.println("my stack is pressed");
+          if(!show_items){
+            burgerStack.create(mainScreen);
+            burgerStack.setPosition(burgerPosition.x, burgerPosition.y);
+            burgerStack.setZoom(100.0f);
+            Serial.println("burgerStack created.");
+
+            bedStack.create(mainScreen);
+            bedStack.setPosition(bedPosition.x, bedPosition.y);
+            bedStack.setZoom(200.0f);
+            Serial.println("bedStack created.");
+            show_items = true;
+          }else if(show_items){
+            bedStack.destroy();
+            burgerStack.destroy();
+            Serial.println("burgerStack destroyed.");
+            show_items = false;
+          }
+
+        }
         break;
       case TouchEventType::SWIPE_LEFT:
         Serial.println("swipe left");
+        if(is_stack_tapped(myStack, ev.x, ev.y)) {
+          animQueue.enqueue(&turnLeft);
+        }
         break;
       case TouchEventType::SWIPE_RIGHT:
         Serial.println("swipe right");
+        if(is_stack_tapped(myStack, ev.x, ev.y)) {
+          animQueue.enqueue(&turnRight);
+        }
         break;
 
       default:
@@ -564,6 +607,7 @@ void loop() {
 
     update_background(rtc);  // move sun/moon, swap day/night, etc.
 
+    driveAnimations();
     /*
     // 5. Update active animation
     if (currentActiveAnimation != nullptr && currentActiveAnimation->isActive()) { // Check if an animation is active
@@ -579,6 +623,11 @@ void loop() {
 
     // 6. Update Sprite Stack
     myStack.update(); // Update the visual state of myStack
+
+    if(show_items){
+      bedStack.update();
+      burgerStack.update();
+    }
 
     lv_task_handler();
     delay(2); // Adjust for desired loop rate

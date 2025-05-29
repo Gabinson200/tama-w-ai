@@ -3,59 +3,31 @@
 #include <math.h>
 #include <Arduino.h>
 
-// forward‐declare the helper for checking a tap on the stack
-static bool is_stack_tapped(const SpriteStack &stack, TapGestureRecognizer &tapRec);
-static bool is_stack_tapped(const SpriteStack &stack, const TouchInfo &touch);
-
-// static storage from before…
-static SpriteStackAnimation* _anims[7];
-static const int _animCount = 7;
-static bool        _inited    = false;
-static int         _animIndex = 0;
-static SpriteStackAnimation* _current = nullptr;
-
-// track the last tap‐ended state
-static bool lastTapEnded = false;
 
 
-void test_anims(SpriteStack &stack, TapGestureRecognizer &tapRec) {
-  // 1) on first-ever call, build your animations once
-  if (!_inited) {
-    _anims[0] = new RotationAnimation(stack, 0, 360, 3000, 0);
-    _anims[1] = new ZoomAnimation    (stack, 0.5*stack.getZoomPercent(), 1*stack.getZoomPercent(), 3000, 0);
-    _anims[2] = new NoNoAnimation    (stack, -25, 25, 3000, 0);
-    _anims[3] = new NodAnimation     (stack, -10, 0, 3000, 0);
-    _anims[4] = new DanceAnimation   (stack, -45, 45, 3000, 0);
-    _anims[5] = new SelectionAnimation(stack, 0, 360, 3000, 0);
-    _anims[6] = new DeselectionAnimation(stack, -15, 15, 3000, 0);
-    _inited = true;
+AnimQueue animQueue;
+SpriteStackAnimation* currentAnim = nullptr;
+
+void driveAnimations() {
+  // if no anim active, grab next from queue
+  if( !currentAnim ) {
+    currentAnim = animQueue.dequeue();
+    if(currentAnim) currentAnim->start();
   }
 
-  // 2) If an animation is running, drive it forward
-  if (_current && _current->isActive()) {
-    _current->update();
-  }
-
-  // 3) tap‐recognizer ended => rising‐edge => start next
-  bool nowEnded = (tapRec.get_state() == GestureState::ENDED);
-  if (nowEnded && !lastTapEnded) {
-    if (is_stack_tapped(stack, tapRec)) {
-      // if no anim in flight, start the next
-      if (! _current || !_current->isActive()) {
-        _current = _anims[_animIndex];
-        _current->start();
-        _animIndex = (_animIndex + 1) % _animCount;
-      }
+  // drive the active anim
+  if(currentAnim) {
+    currentAnim->update();
+    if(!currentAnim->isActive()) {
+      //delete currentAnim;
+      currentAnim = nullptr;
     }
-    // reset the recognizer so it can fire again next tap
-    tapRec.reset();
   }
-  lastTapEnded = nowEnded;
 }
 
 // helper: is touch within the bounding box of the stack?
 // new overload for TapGestureRecognizer:
-static bool is_stack_tapped(const SpriteStack &stack, TapGestureRecognizer &tapRec) {
+bool is_stack_tapped(const SpriteStack &stack, TapGestureRecognizer &tapRec) {
   // only fire when the recognizer has just ended a tap
   if (tapRec.get_state() != GestureState::ENDED) return false;
 
@@ -93,6 +65,22 @@ bool is_stack_tapped(const SpriteStack& sprite, const TouchInfo &touch) {
     return hit;
 }
 
+bool is_stack_tapped(const SpriteStack& sprite, const int x, const int y) {
+    if (sprite.getLVGLObject() == nullptr) return false;
+
+    Point spritePos = sprite.getPosition();
+    int w, h;
+    sprite.getDim(w,h);
+    float zoomFactor = sprite.getZoomPercent() / 100.0f;
+    int displayW = w * zoomFactor;
+    int displayH = h * zoomFactor;
+
+    int hitbox_half_width = displayW / 2;
+    int hitbox_half_height = displayH / 2;
+
+    bool hit = is_within_square_bounds_center(x, y, spritePos.x, spritePos.y, hitbox_half_width, hitbox_half_height);
+    return hit;
+}
 //–––––– Base class implementation ––––––
 
 SpriteStackAnimation::SpriteStackAnimation(uint32_t duration, uint32_t delay)
@@ -107,19 +95,24 @@ bool SpriteStackAnimation::isActive() const {
 //–––––– RotationAnimation Implementation ––––––
 
 RotationAnimation::RotationAnimation(SpriteStack &sprite, float startAngle, float endAngle,
-                                     uint32_t duration, uint32_t delay)
+                                     uint32_t duration, uint32_t delay, bool relative)
   : SpriteStackAnimation(duration, delay),
     _sprite(sprite),
     _startAngle(startAngle),
-    _endAngle(endAngle)
+    _endAngle(endAngle),
+    _relative(relative)
 {}
 
 void RotationAnimation::start() {
     _startTime = millis();
     _active = true;
     // Initialize to start angle (assume pitch and yaw remain 0).
-    _sprite.getRotation(_basePitch, _baseYaw, _baseRoll); 
-    _sprite.setRotation(_basePitch, _baseYaw, _baseRoll + _startAngle);
+    _sprite.getRotation(_basePitch, _baseYaw, _baseRoll);
+    if(_relative){
+      _sprite.setRotation(_basePitch, _baseYaw, _baseRoll + _startAngle);
+    }else{
+      _sprite.setRotation(_basePitch, _baseYaw, _startAngle);
+    }
 }
 
 void RotationAnimation::update() {
@@ -132,12 +125,21 @@ void RotationAnimation::update() {
     uint32_t elapsed = now - (_startTime + _delay);
     if (elapsed >= _duration) {
         // Animation complete.
-        _sprite.setRotation(_basePitch, _baseYaw, _baseRoll + _endAngle);
+        if(_relative){
+          _sprite.setRotation(_basePitch, _baseYaw, _baseRoll + _endAngle);
+        }else{
+          _sprite.setRotation(_basePitch, _baseYaw, _endAngle);
+        }
         _active = false;
     } else {
         float t = (float)elapsed / _duration; // linear interpolation factor [0,1]
-        float currentAngle = _baseRoll + _startAngle + t * (_endAngle - _startAngle);
-        _sprite.setRotation(_basePitch, _baseYaw, currentAngle);
+        if(_relative){
+           _sprite.setRotation(_basePitch, _baseYaw,
+                              _baseRoll + _startAngle + t * (_endAngle - _startAngle));
+        }else{
+          _sprite.setRotation(_basePitch, _baseYaw,
+                              _startAngle + t * (_endAngle - _startAngle));
+        }
     }
 }
 

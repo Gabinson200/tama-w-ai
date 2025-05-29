@@ -39,6 +39,50 @@ class SpriteStackAnimation {
     bool _active;         // true while the animation is running
 };
 
+// forward‐declare the helper for checking a tap on the stack
+bool is_stack_tapped(const SpriteStack &stack, TapGestureRecognizer &tapRec);
+bool is_stack_tapped(const SpriteStack &stack, const TouchInfo &touch);
+bool is_stack_tapped(const SpriteStack &stack, const int x, const int y);
+
+/**
+ * @brief A little fixed-size circular queue of spritestack animaiton pointers.
+ *
+ * Note: may expand to dynamic size and other optimizations.
+ */
+constexpr int MAX_QUEUE = 8;
+struct AnimQueue {
+  SpriteStackAnimation* buf[MAX_QUEUE];
+  int head = 0, tail = 0, count = 0;
+
+  bool empty() const   { return count == 0; }
+  bool full()  const   { return count == MAX_QUEUE; }
+
+  /// enqueue returns false if the queue is full
+  bool enqueue(SpriteStackAnimation* a) {
+    if(full()) return false;
+    buf[tail] = a;
+    tail = (tail + 1) % MAX_QUEUE;
+    ++count;
+    return true;
+  }
+
+  /// dequeue returns nullptr if empty
+  SpriteStackAnimation* dequeue() {
+    if(empty()) return nullptr;
+    auto* a = buf[head];
+    head = (head + 1) % MAX_QUEUE;
+    --count;
+    return a;
+  }
+};
+
+/// Singleton queue and “current” animation
+extern AnimQueue animQueue;
+extern SpriteStackAnimation* currentAnim;
+
+/// Call this from loop() each pass
+void driveAnimations();
+
 /**
  * @brief Animates the roll angle (rotation) of a SpriteStack.
  *
@@ -53,9 +97,13 @@ class RotationAnimation : public SpriteStackAnimation {
      * @param endAngle   The ending roll angle (in degrees).
      * @param duration   Duration (ms) of the animation.
      * @param delay      Optional delay (ms) before the animation begins.
+     * @param relative   relative to the current angle or absolute
      */
     RotationAnimation(SpriteStack &sprite, float startAngle, float endAngle,
-                      uint32_t duration, uint32_t delay = 0);
+                      uint32_t duration, uint32_t delay = 0, bool relative = false);
+
+    //RotationAnimation(SpriteStack &sprite, float deltaAngle, uint32_t duration, uint32_t delay = 0);
+
     virtual void start();
     virtual void update();
 
@@ -64,6 +112,7 @@ class RotationAnimation : public SpriteStackAnimation {
     float _startAngle;
     float _endAngle;
     float _basePitch, _baseYaw, _baseRoll;
+    bool _relative;
     Point pos;
 };
 

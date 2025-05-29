@@ -112,7 +112,6 @@ enum class TouchEventType {
   SWIPE_RIGHT,
   SWIPE_UP,
   SWIPE_DOWN,
-  // …whatever else you need…
 };
 
 struct TouchEvent {

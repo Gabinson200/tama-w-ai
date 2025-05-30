@@ -167,7 +167,7 @@ void TapGestureRecognizer::notify_current_press_is_claimed() {
     // during the current physical press.
     // It's sticky and only cleared by TapGestureRecognizer::reset().
     ongoing_press_is_claimed_by_other = true;
-    // Serial.println("Tap: notified press is claimed by other."); // Debug
+    //Serial.println("Tap: notified press is claimed by other."); // Debug
 }
 
 bool TapGestureRecognizer::is_waiting_for_confirmation() const {
@@ -411,11 +411,13 @@ TouchEvent get_touch_event() {
 
     // 3. Notify TapRecognizer if the current press has been claimed by an ongoing LongPress/Swipe
     if (currentGlobalTouch.is_pressed) {
-        if (myLongPressRecognizer.get_state() == GestureState::BEGAN || myLongPressRecognizer.get_state() == GestureState::FAILED ||
-            mySwipeTracker.state == SWIPE_DRAGGING) {
-            myTapRecognizer.notify_current_press_is_claimed();
-        }
+      if (myLongPressRecognizer.get_state() == GestureState::BEGAN || myLongPressRecognizer.get_state() == GestureState::FAILED ||
+          mySwipeTracker.state == SWIPE_DRAGGING) {
+          myTapRecognizer.notify_current_press_is_claimed();
+      }
     }
+
+
     // TapRecognizer's internal 'ongoing_press_is_claimed_by_other' flag is now managed by its own update/reset logic combined with this notification.
 
     // 4. Update Tap recognizer
@@ -457,23 +459,6 @@ TouchEvent get_touch_event() {
         ev.type = TouchEventType::TAP;
         ev.x = myTapRecognizer.get_tap_x();
         ev.y = myTapRecognizer.get_tap_y();
-        //myTapRecognizer.reset();
-        /*
-        if (currentActiveAnimation == nullptr || !currentActiveAnimation->isActive()) { // Check if no animation is currently active
-            if (is_tap_on_sprite(myStack, tap_x, tap_y)) {
-                Serial.println("Tap on myStack detected! Starting Dance Animation.");
-                currentActiveAnimation = &DanceAnim; // Set DanceAnim as the current animation
-                currentActiveAnimation->start(); // Start the animation
-            } else {
-                Serial.println("Tap was not on myStack.");
-            }
-        } else {
-            Serial.println("Tap ignored, an animation is already active.");
-        }
-        Serial.println("--------------------------------");
-        myTapRecognizer.reset(); // Reset recognizer for next tap
-        */
-
     }
 
     if (longPressState != prevLongPressState) {

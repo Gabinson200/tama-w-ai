@@ -8,6 +8,12 @@
 
 
 #define CELESTIAL_SIZE 40
+
+// Global variables for status arcs
+extern uint8_t hunger_value;
+extern uint8_t happiness_value;
+extern uint8_t energy_value;
+
 static uint8_t celestial_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR_ALPHA(CELESTIAL_SIZE, CELESTIAL_SIZE)];
 // how often to really redraw the *entire* scene:
 static const unsigned long SCENE_UPDATE_INTERVAL_MS = 60UL * 1000UL; // 1 minute
@@ -33,5 +39,10 @@ void update_background(I2C_BM8563 rtc);
 * @param parent lv screen object on which to create the background objects 
 */
 void create_scene(lv_obj_t* parent = nullptr);
+
+
+void timer_cb(lv_timer_t *timer);
+
+void create_arcs(lv_obj_t *parent);
 
 #endif

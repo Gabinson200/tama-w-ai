@@ -116,6 +116,7 @@ class RotationAnimation : public SpriteStackAnimation {
     float _basePitch, _baseYaw, _baseRoll;
     bool _relative;
     Point pos;
+    std::vector<float> _precalculated_angles; // Store pre-calculated angles
 };
 
 /**

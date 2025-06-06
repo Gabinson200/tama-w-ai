@@ -13,7 +13,7 @@
 #include "I2C_BM8563.h"           // RTC library
 #include "sprites.h"              // sprite image declarations
 #include "background.h"           // background functions
-
+#include <string.h> // for strncmp(), snprintf()
 
 // -------------------------
 // GLOBAL VARIABLES & OBJECTS
@@ -29,14 +29,14 @@ unsigned long postUserTargetTime  = 0;
 // random wander state
 bool   wanderingActive            = false;
 unsigned long lastWanderTime      = 0;
-const unsigned long WANDER_INTERVAL = 5000;
+const unsigned long WANDER_INTERVAL = 60UL * 1000UL; // 1 min
 
 // stepping
 const unsigned long STEP_INTERVAL = 1000; // 1 times a second
 
 // hold & cooldown durations
 const unsigned long USER_HOLD_MS  = 2000;
-const unsigned long COOLDOWN_MS   = 7000; 
+const unsigned long COOLDOWN_MS   = 60UL * 1000UL;  // also 1 min
 
 enum class MoveState { Idle, ToUser, ToWander };
 static MoveState   moveState       = MoveState::Idle;
@@ -61,13 +61,15 @@ int ballFrameCount = sizeof(ball_images) / sizeof(ball_images[0]);
 SpriteStack myStack(frog_images, frogFrameCount, 0, 1.0, 1.0, 200.0f);
 SpriteStack burgerStack(burger_images, burgerFrameCount, 0, 1.0, 1.0, 100.0f);
 SpriteStack bedStack(bed_images, bedFrameCount, 0, 1.0, 1.0, 100.0f);
+SpriteStack ballStack(ball_images, ballFrameCount, 0, 1.0, 1.0, 100.0f);
 
-SpriteStack* sortable_stacks[] = { &myStack, &burgerStack, &bedStack };
+SpriteStack* sortable_stacks[] = { &myStack, &burgerStack, &bedStack, &ballStack };
 const int NUM_SORTABLE_STACKS = sizeof(sortable_stacks) / sizeof(sortable_stacks[0]);
 
 Point g_spritePosition = {120, 160}; 
-Point burgerPosition = {80, 140};    
-Point bedPosition = {180, 140};      
+Point burgerPosition = {80, 200};    
+Point bedPosition = {180, 200};     
+Point ballPosition = {120, 200};
 
 bool inCatchingGame = false;
 
@@ -90,6 +92,9 @@ RotationAnimation turnRight(myStack, 0, -22, 1000, 0, true);
 
 
 SelectionAnimation burgerSelectAnim(burgerStack, 0, 360, 3000, 0);
+NoNoAnimation bedSelectAnim(bedStack, -15, 15, 3000, 0);
+DeselectionAnimation ballSelectAnim(ballStack, -25, 25, 1500, 0);
+
 
 // -------------------------
 // UTILITY FUNCTIONS
@@ -200,9 +205,9 @@ bool moveSpriteToTarget(SpriteStack &sprite_stack, Point &currentPos, const Poin
         lastUpdate = now;
         float dx = internal_target_memory.x - currentPos.x;
         float dy = internal_target_memory.y - currentPos.y;
-        float dist = sqrt(dx * dx + dy * dy);
+        float dist_sq = dx * dx + dy * dy; // no need to use sqrt here cuz its slow just square  the dist below
 
-        if (dist < 2.0f) { // Threshold for arrival
+        if (dist_sq < 4.0f) { // Threshold for arrival
             currentPos = internal_target_memory; 
             sprite_stack.setPosition(currentPos.x, currentPos.y);
             sprite_stack.setRotation(0, 0, 0); 
@@ -212,6 +217,7 @@ bool moveSpriteToTarget(SpriteStack &sprite_stack, Point &currentPos, const Poin
             return true; 
         } else {
             // Continue moving
+            float dist = sqrtf(dist_sq);
             float step = 1.5f; 
             float step_x = (dx / dist) * step;
             float step_y = (dy / dist) * step;
@@ -244,6 +250,7 @@ void reset_walk_to_random_point_state() {
     Serial.println("Random walk state reset.");
 }
 
+/*
 void walk_to_random_point(SpriteStack &sprite_stack, Point &currentPos) {
   const int margin = 40; 
 
@@ -259,7 +266,8 @@ void walk_to_random_point(SpriteStack &sprite_stack, Point &currentPos) {
     // Serial.println("walk_to_random_point: Random destination reached.");
   }
 }
-
+*/
+/*
 int compareSpriteStacksByY(const void* a, const void* b) {
     SpriteStack* stackA = *(SpriteStack**)a;
     SpriteStack* stackB = *(SpriteStack**)b;
@@ -269,7 +277,7 @@ int compareSpriteStacksByY(const void* a, const void* b) {
     if (yA > yB) return 1;  
     return 0; 
 }
-
+*/
 void updateSpriteStackZOrder() {
     static int idx = 0;
     const int n = NUM_SORTABLE_STACKS;
@@ -393,6 +401,110 @@ void stepMovement() {
 }
 
 
+//--------------------------------------------------------------------------------
+// Dump all immediate children of 'parent', printing only labels and their texts.
+//--------------------------------------------------------------------------------
+void dump_children_of(lv_obj_t* parent) {
+    uint32_t cnt = lv_obj_get_child_cnt(parent);
+    Serial.print(F("dump_children_of: parent=0x"));
+    Serial.print((uintptr_t)parent, HEX);
+    Serial.print(F("  child_count="));
+    Serial.println(cnt);
+
+    for (uint32_t i = 0; i < cnt; i++) {
+        lv_obj_t* child = lv_obj_get_child(parent, i);
+        Serial.print(F("  ["));
+        Serial.print(i);
+        Serial.print(F("] obj=0x"));
+        Serial.print((uintptr_t)child, HEX);
+
+        if (lv_obj_has_class(child, &lv_label_class)) {
+            const char* txt = lv_label_get_text(child);
+            Serial.print(F("  <Label> \""));
+            Serial.print(txt ? txt : "");
+            Serial.println(F("\""));
+        }
+        else {
+            Serial.println(F("  <Other object>"));
+        }
+    }
+    Serial.println();
+}
+
+static lv_obj_t * fps_label;
+static lv_obj_t * mem_label;
+static lv_style_t small_font_style;
+
+// --- Add these to your global variables ---
+static lv_obj_t *custom_fps_label;
+static lv_obj_t *custom_mem_label;
+static lv_style_t monitor_style;
+static volatile uint32_t fps_counter = 0;
+
+// --- Replace your sysmon_relocator_cb with this new function ---
+static void custom_monitor_update_cb(lv_timer_t * timer) {
+    // 1. Get stats from LVGL
+    int32_t fps = fps_counter;
+    fps_counter = 0;
+    lv_mem_monitor_t mon;
+    lv_mem_monitor(&mon);
+    uint32_t used_kb = (mon.total_size - mon.free_size) / 1024;
+
+    // 2. Update the text of your labels
+    lv_label_set_text_fmt(custom_fps_label, "%" LV_PRId32 " FPS", fps);
+    lv_label_set_text_fmt(custom_mem_label, "%" LV_PRIu32 " kB", used_kb);
+
+    // 3. Recalculate position and center the labels
+    lv_coord_t pw = lv_obj_get_width(custom_fps_label);
+    lv_coord_t ph = lv_obj_get_height(custom_fps_label);
+    lv_coord_t mw = lv_obj_get_width(custom_mem_label);
+    lv_coord_t mh = lv_obj_get_height(custom_mem_label);
+
+    lv_coord_t screen_w = lv_disp_get_hor_res(nullptr);
+    lv_coord_t screen_h = lv_disp_get_ver_res(nullptr);
+    const lv_coord_t gap    = 10;
+    const lv_coord_t bottom = 210;
+
+    lv_coord_t total_w = mw + pw + gap;
+    lv_coord_t start_x = (screen_w - total_w) / 2;
+    lv_coord_t y       = screen_h - max(mh, ph) - bottom;
+
+    // 4. Set the new positions
+    lv_obj_set_pos(custom_mem_label, start_x, y);
+    lv_obj_set_pos(custom_fps_label, start_x + mw + gap, y);
+}
+
+// ------------------------------------------------------
+// TIMER CALLBACK
+// This runs once every second (immediately after sysmon updates).
+// ------------------------------------------------------
+static void sysmon_relocator_cb(lv_timer_t * timer) {
+  (void)timer; // unused
+
+  // 1) Shrink both labels to Montserrat 8px
+  lv_obj_add_style(fps_label, &small_font_style, LV_PART_MAIN);
+  lv_obj_add_style(mem_label, &small_font_style, LV_PART_MAIN);
+
+  // 2) Re-measure their sizes
+  lv_coord_t pw = lv_obj_get_width(fps_label);
+  lv_coord_t ph = lv_obj_get_height(fps_label);
+  lv_coord_t mw = lv_obj_get_width(mem_label);
+  lv_coord_t mh = lv_obj_get_height(mem_label);
+
+  // 3) Compute bottom-center placement (10 px gap, 5 px margin)
+  lv_coord_t screen_w = lv_disp_get_hor_res(nullptr);
+  lv_coord_t screen_h = lv_disp_get_ver_res(nullptr);
+  const lv_coord_t gap    = 10;
+  const lv_coord_t bottom = 5;
+
+  lv_coord_t total_w = mw + pw + gap;
+  lv_coord_t start_x = (screen_w - total_w) / 2;
+  lv_coord_t y       = screen_h - max(mh, ph) - bottom;
+
+  // 4) Move MEM (left) then FPS (right)
+  lv_obj_set_pos(mem_label,  start_x,         y);
+  lv_obj_set_pos(fps_label, start_x + mw + gap, y);
+}
 
 // -------------------------
 // SETUP & LOOP
@@ -400,54 +512,93 @@ void stepMovement() {
 void setup() {
   Serial.begin(115200);
   while (!Serial && millis() < 2000);
-  Serial.println("LVGL Sprite Stack Tamagotchi - Setup Start");
 
+  // 1) Initialize LVGL core and HALs
   lv_init();
-  Serial.println("LVGL initialized.");
-
   lv_xiao_disp_init();
-  Serial.println("Display initialized.");
-
   lv_xiao_touch_init();
-  Serial.println("Touch initialized.");
-  //lv_indev_t *indev = lv_indev_get_next(nullptr);
-  //lv_indev_enable(indev, false);
-
-  //lv_indev_t* indev = lv_indev_get_next(NULL);
-  //lv_indev_disable(indev);
-
   Wire.begin();
   rtc.begin();
-  Serial.println("RTC initialized.");
 
-  mainScreen = lv_obj_create(NULL);
-  lv_obj_remove_style_all(mainScreen);
-  lv_obj_set_size(mainScreen, lv_disp_get_hor_res(NULL), lv_disp_get_ver_res(NULL));
+  // 2) Create & load a main screen so layers exist
+  mainScreen = lv_obj_create(nullptr);
+  lv_obj_set_size(mainScreen,
+                  lv_disp_get_hor_res(nullptr),
+                  lv_disp_get_ver_res(nullptr));
   lv_scr_load(mainScreen);
-  Serial.println("Main screen created and loaded.");
+
+  /*
+  // 3) Let LVGL run two timer handler calls so built‐in monitors (if any) appear
+  lv_timer_handler();
+  lv_timer_handler();
+
+  // 4) Dump the System Layer’s immediate children
+  Serial.println(F("─── System Layer Immediate Children ───"));
+  dump_children_of(lv_layer_sys());
+
+  // 5) (Optional) Dump the Active Screen’s immediate children
+  Serial.println(F("─── Active Screen Immediate Children ───"));
+  dump_children_of(lv_scr_act());
+
+  
+  // 6) Now proceed with the rest of setup (we’ll locate & reposition the labels next)
+  //    First: build a Montserrat 8 px style for shrinking.
+  lv_style_init(&small_font_style);
+  lv_style_set_text_font(&small_font_style, &lv_font_montserrat_8);
+
+  // 6) Find the two sysmon labels in lv_layer_sys()
+  {
+    lv_obj_t* sys_layer = lv_layer_sys();
+    uint32_t cnt = lv_obj_get_child_cnt(sys_layer);
+    for (uint32_t i = 0; i < cnt; i++) {
+      lv_obj_t* child = lv_obj_get_child(sys_layer, i);
+      if (!lv_obj_has_class(child, &lv_label_class)) continue;
+      const char* txt = lv_label_get_text(child);
+      if      (txt && strstr(txt, "FPS"))  fps_label = child;
+      else if (txt && (strstr(txt, "used") || strstr(txt, "kB"))) mem_label = child;
+      if (fps_label && mem_label) break;
+    }
+    if (!fps_label || !mem_label) {
+      Serial.println(F("Warning: Could not find one or both sysmon labels!"));
+    }
+  }
+
+  // 7) If found, create a 1 s LVGL timer to re-style/re-position them each tick
+  if (fps_label && mem_label) {
+    lv_timer_t * t = lv_timer_create(sysmon_relocator_cb, 1000, nullptr);
+    (void)t; // we don’t need to keep the handle
+    Serial.println(F("Sysmon relocator timer created."));
+  }
+  */
+  // 1. Create a persistent style for the labels
+  lv_style_init(&monitor_style);
+  lv_style_set_text_font(&monitor_style, &lv_font_montserrat_8);
+  lv_style_set_text_color(&monitor_style, lv_color_white());
+  lv_style_set_bg_color(&monitor_style, lv_color_black());
+  lv_style_set_bg_opa(&monitor_style, LV_OPA_70);
+  lv_style_set_pad_all(&monitor_style, 2);
+  lv_style_set_radius(&monitor_style, 2);
+
+  // 2. Create the labels on the system layer (to keep them on top)
+  custom_mem_label = lv_label_create(lv_layer_sys());
+  lv_obj_add_style(custom_mem_label, &monitor_style, 0);
+
+  custom_fps_label = lv_label_create(lv_layer_sys());
+  lv_obj_add_style(custom_fps_label, &monitor_style, 0);
+
+  // 3. Create a single timer to update the text and position
+  lv_timer_create(custom_monitor_update_cb, 1000, nullptr);
+
+  // 4. Run the callback once to initialize text and position
+  custom_monitor_update_cb(nullptr);
+  
+  Serial.println(F("Custom system monitors created."));
 
   myStack.create(mainScreen);
   myStack.setPosition(g_spritePosition.x, g_spritePosition.y);
   myStack.setZoom(200.0f);
   Serial.println("myStack (cat) created.");
 
-  // Burger and Bed are initially not created, they will be created when show_items becomes true.
-  // Remove their creation from setup:
-  /*
-  burgerStack.create(mainScreen);
-  burgerStack.setPosition(burgerPosition.x, burgerPosition.y);
-  burgerStack.setZoom(100.0f);
-  Serial.println("burgerStack created.");
-
-  bedStack.create(mainScreen);
-  bedStack.setPosition(bedPosition.x, bedPosition.y);
-  bedStack.setZoom(200.0f);
-  Serial.println("bedStack created.");
-  */
-
-  // --- Initialize Swipe Tracker ---
-  //mySwipeTracker.state = SWIPE_IDLE;
-  //mySwipeTracker.swipeDetected = false;
 
   create_scene(mainScreen);
 
@@ -457,6 +608,8 @@ void setup() {
 }
 
 void loop() {
+    fps_counter++;
+
     unsigned long t_loop_start, t_touch, t_anim, t_step, t_zorder, t_stack_update, t_lvgl, t_loop_end;
     static unsigned long last_log_time = 0;
 
@@ -474,10 +627,18 @@ void loop() {
           }
         }
 
-        if(is_stack_tapped(burgerStack, ev.x, ev.y)) {
-          //auto* a = SelectionAnimation(myStack, 0, 360, 3000, 0);
-          // drop it if the queue is already full
-          start_anim(&burgerSelectAnim);
+        if(show_items){
+          if(is_stack_tapped(burgerStack, ev.x, ev.y)) {
+            start_anim(&burgerSelectAnim);
+          }
+          if(is_stack_tapped(bedStack, ev.x, ev.y)) {
+            start_anim(&bedSelectAnim);
+          }
+          if(is_stack_tapped(ballStack, ev.x, ev.y)) {
+            //auto* a = SelectionAnimation(myStack, 0, 360, 3000, 0);
+            // drop it if the queue is already full
+            start_anim(&ballSelectAnim);
+          }
         }
         break;
       case TouchEventType::LONG_PRESS_BEGAN:
@@ -494,11 +655,18 @@ void loop() {
             bedStack.setPosition(bedPosition.x, bedPosition.y);
             bedStack.setZoom(200.0f);
             Serial.println("bedStack created.");
+
+            ballStack.create(mainScreen);
+            ballStack.setPosition(ballPosition.x, ballPosition.y);
+            ballStack.setZoom(100.0f);
+            Serial.println("ballStack created.");
+
             show_items = true;
           }else if(show_items){
             bedStack.destroy();
             burgerStack.destroy();
-            Serial.println("burgerStack destroyed.");
+            ballStack.destroy();
+            Serial.println("menu items destroyed.");
             show_items = false;
           }
         }
@@ -543,6 +711,7 @@ void loop() {
     if(show_items){
       bedStack.update();
       burgerStack.update();
+      ballStack.update();
     }
     t_stack_update = millis();
 

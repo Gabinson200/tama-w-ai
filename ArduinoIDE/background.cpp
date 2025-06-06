@@ -126,6 +126,9 @@ void create_scene(lv_obj_t* parent) {
   lv_obj_set_size(bottom_bg, lv_obj_get_width(parent), lv_obj_get_height(parent) / 2);
   lv_obj_align(bottom_bg, LV_ALIGN_BOTTOM_LEFT, 0, 0);
   // needed to create bg so we can get sky height in update_background
+
+  create_arcs(parent);
+
   lv_task_handler();
   // negates the timer so it also runs once off-the-bat in the main loop
   lastSceneUpdate = millis() - SCENE_UPDATE_INTERVAL_MS - 100;
@@ -134,4 +137,101 @@ void create_scene(lv_obj_t* parent) {
    
 }
 
+// Global variables for status arcs
+uint8_t hunger_value    = 100;
+uint8_t happiness_value = 50;
+uint8_t energy_value    = 100;
 
+// Timer callback function to update arcs
+void timer_cb(lv_timer_t *timer) {
+    hunger_value    = (hunger_value >= 2)     ? hunger_value - 2 : 0;
+    happiness_value = (happiness_value >= 1)  ? happiness_value - 1 : 0;
+    energy_value    = (energy_value >= 2)     ? energy_value - 2 : 0;
+
+    lv_obj_t **arcs = (lv_obj_t **)timer->user_data;
+    // arcs[0] = hunger arc
+    lv_arc_set_value(arcs[0], hunger_value);
+
+    // arcs[1], arcs[2] = happiness arcs
+    lv_arc_set_value(arcs[1], (happiness_value > 50 ? 50 : happiness_value));
+    lv_arc_set_value(arcs[2], (happiness_value > 50 ? 50 : happiness_value));
+
+    // arcs[3] = energy arc
+    lv_arc_set_value(arcs[3], energy_value);
+}
+
+// Arc creation function
+void create_arcs(lv_obj_t *parent) {
+    const int ARC_SIZE   = 230;
+    const int ARC_WIDTH  = 12;
+    const int ARC_RANGE  = 40;
+    const int ARC_SPACING= 40;
+    const int offset     = 8; 
+
+    // Hunger arc
+    lv_obj_t *arc_hunger = lv_arc_create(parent);
+    lv_obj_set_size(arc_hunger, ARC_SIZE, ARC_SIZE);
+    lv_obj_center(arc_hunger);
+    lv_arc_set_rotation(arc_hunger, 270 - ARC_SPACING - 12);
+    lv_arc_set_mode(arc_hunger, LV_ARC_MODE_NORMAL);
+    lv_arc_set_bg_angles(arc_hunger, 0, ARC_RANGE/2);
+    lv_arc_set_range(arc_hunger, 0, 100);
+    lv_arc_set_value(arc_hunger, hunger_value);
+    lv_obj_set_style_arc_width(arc_hunger, ARC_WIDTH, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(arc_hunger, ARC_WIDTH, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(arc_hunger, lv_color_hex(0x444444), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(arc_hunger, lv_color_hex(0xFF5555), LV_PART_INDICATOR);
+    lv_obj_remove_style(arc_hunger, NULL, LV_PART_KNOB);
+    lv_obj_clear_flag(arc_hunger, LV_OBJ_FLAG_CLICKABLE);
+
+    // Happiness arcs (two arcs forming symmetrical fill)
+    lv_obj_t *arc_happiness_left = lv_arc_create(parent);
+    lv_obj_set_size(arc_happiness_left, ARC_SIZE, ARC_SIZE);
+    lv_obj_center(arc_happiness_left);
+    lv_arc_set_rotation(arc_happiness_left, 260);
+    lv_arc_set_mode(arc_happiness_left, LV_ARC_MODE_REVERSE);
+    lv_arc_set_bg_angles(arc_happiness_left, 0, ARC_RANGE / 4);
+    lv_arc_set_range(arc_happiness_left, 0, 50);
+    lv_arc_set_value(arc_happiness_left, (happiness_value > 50 ? 50 : happiness_value));
+    lv_obj_set_style_arc_width(arc_happiness_left, ARC_WIDTH, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(arc_happiness_left, ARC_WIDTH, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(arc_happiness_left, lv_color_hex(0x444444), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(arc_happiness_left, lv_color_hex(0x55FF55), LV_PART_INDICATOR);
+    lv_obj_remove_style(arc_happiness_left, NULL, LV_PART_KNOB);
+    lv_obj_clear_flag(arc_happiness_left, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *arc_happiness_right = lv_arc_create(parent);
+    lv_obj_set_size(arc_happiness_right, ARC_SIZE, ARC_SIZE);
+    lv_obj_center(arc_happiness_right);
+    lv_arc_set_rotation(arc_happiness_right, 280-offset);
+    lv_arc_set_mode(arc_happiness_right, LV_ARC_MODE_NORMAL);
+    lv_arc_set_bg_angles(arc_happiness_right, 0, ARC_RANGE / 4);
+    lv_arc_set_range(arc_happiness_right, 0, 50);
+    lv_arc_set_value(arc_happiness_right, (happiness_value > 50 ? 50 : happiness_value));
+    lv_obj_set_style_arc_width(arc_happiness_right, ARC_WIDTH, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(arc_happiness_right, ARC_WIDTH, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(arc_happiness_right, lv_color_hex(0x444444), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(arc_happiness_right, lv_color_hex(0x55FF55), LV_PART_INDICATOR);
+    lv_obj_remove_style(arc_happiness_right, NULL, LV_PART_KNOB);
+    lv_obj_clear_flag(arc_happiness_right, LV_OBJ_FLAG_CLICKABLE);
+
+    // Energy arc
+    lv_obj_t *arc_energy = lv_arc_create(parent);
+    lv_obj_set_size(arc_energy, ARC_SIZE, ARC_SIZE);
+    lv_obj_center(arc_energy);
+    lv_arc_set_rotation(arc_energy, 270 + ARC_SPACING - offset);
+    lv_arc_set_mode(arc_energy, LV_ARC_MODE_REVERSE);
+    lv_arc_set_bg_angles(arc_energy, 0, ARC_RANGE/2);
+    lv_arc_set_range(arc_energy, 0, 100);
+    lv_arc_set_value(arc_energy, energy_value);
+    lv_obj_set_style_arc_width(arc_energy, ARC_WIDTH, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(arc_energy, ARC_WIDTH, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(arc_energy, lv_color_hex(0x444444), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(arc_energy, lv_color_hex(0x5555FF), LV_PART_INDICATOR);
+    lv_obj_remove_style(arc_energy, NULL, LV_PART_KNOB);
+    lv_obj_clear_flag(arc_energy, LV_OBJ_FLAG_CLICKABLE);
+
+    // Store arcs for timer
+    static lv_obj_t *arcs[4] = {arc_hunger, arc_happiness_left, arc_happiness_right, arc_energy};
+    lv_timer_create(timer_cb, SCENE_UPDATE_INTERVAL_MS, arcs);
+}

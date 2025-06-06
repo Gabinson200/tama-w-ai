@@ -104,10 +104,21 @@ void RotationAnimation::start() {
     _active = true;
     // Initialize to start angle (assume pitch and yaw remain 0).
     _sprite.getRotation(_basePitch, _baseYaw, _baseRoll);
-    if(_relative){
-      _sprite.setRotation(_basePitch, _baseYaw, _baseRoll + _startAngle);
-    }else{
-      _sprite.setRotation(_basePitch, _baseYaw, _startAngle);
+    // --- Pre-calculation Step ---
+    _precalculated_angles.clear();
+    // Assuming a target of ~30 FPS, for a 3000ms animation, we need ~90 steps.
+    int num_steps = (_duration / 1000.0f) * 30; // 30 steps per second
+    _precalculated_angles.reserve(num_steps);
+
+    for (int i = 0; i < num_steps; ++i) {
+        float t = (float)i / (num_steps - 1);
+        float angle;
+        if(_relative) {
+            angle = _baseRoll + _startAngle + t * (_endAngle - _startAngle);
+        } else {
+            angle = _startAngle + t * (_endAngle - _startAngle);
+        }
+        _precalculated_angles.push_back(angle);
     }
 }
 
@@ -128,13 +139,11 @@ void RotationAnimation::update() {
         }
         _active = false;
     } else {
-        float t = (float)elapsed / _duration; // linear interpolation factor [0,1]
-        if(_relative){
-           _sprite.setRotation(_basePitch, _baseYaw,
-                              _baseRoll + _startAngle + t * (_endAngle - _startAngle));
-        }else{
-          _sprite.setRotation(_basePitch, _baseYaw,
-                              _startAngle + t * (_endAngle - _startAngle));
+        // --- Use Pre-calculated Value ---
+        float progress = (float)elapsed / _duration;
+        int index = (int)(progress * (_precalculated_angles.size() - 1));
+        if (index < _precalculated_angles.size()) {
+             _sprite.setRotation(_basePitch, _baseYaw, _precalculated_angles[index]);
         }
     }
 }

@@ -209,7 +209,7 @@ void updateCatchingGame() {
   }
   
   // Game is 60 seconds long.
-  if(millis() - gameStartTime > 60000){ // 5seconds for testing
+  if(millis() - gameStartTime > 10000){ // 5seconds for testing
     Serial.print("Out of time");
     cleanupCatchingGame(); 
     return;

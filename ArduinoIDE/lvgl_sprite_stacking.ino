@@ -692,11 +692,10 @@ void loop() {
     t_stack_update = millis();
 
     // this has some blocking issue
-    //updateSpriteStackZOrder();
+    updateSpriteStackZOrder();
     t_zorder = millis();
 
-    lv_task_handler();
-    //lv_timer_handler();
+    lv_timer_handler();
     t_lvgl = millis();
 
     // Log durations periodically, e.g., every 1-2 seconds

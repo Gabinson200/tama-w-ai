@@ -69,8 +69,12 @@ void SpriteStack::create(lv_obj_t *parent) {
             continue;
         }
         // lv_obj_set_parent(images[j], parent); // Not needed if parent passed to lv_img_create
-
-        int sprite_idx = (starting_index + j) % num_slices;
+        int sprite_idx = 0;
+        if(num_slices == 1){
+          sprite_idx = (starting_index + j);
+        }else{
+          sprite_idx = (starting_index + j) % num_slices;
+        }
         lv_img_set_src(images[j], sprite_set[sprite_idx]);
 
         lv_obj_add_flag(images[j], LV_OBJ_FLAG_IGNORE_LAYOUT);
@@ -84,11 +88,11 @@ void SpriteStack::create(lv_obj_t *parent) {
 }
 
 void SpriteStack::destroy() {
-    Serial.print("About to delete: "); 
+    //Serial.print("About to delete: "); 
     if(images) {
         for (int j = 0; j < num_slices; j++) {
             if(images[j]) {
-                Serial.println((uintptr_t)images[j], HEX);
+                //Serial.println((uintptr_t)images[j], HEX);
                 lv_obj_del(images[j]);
                 images[j] = nullptr;
             }
@@ -214,6 +218,40 @@ float SpriteStack::getCameraDistance() const {
     return camera_distance;
 }
 
+/**
+ * @brief Sets the image source for a single-slice SpriteStack.
+ * Assumes num_slices is 1.
+ */
+void SpriteStack::setSpriteImage(const lv_img_dsc_t* image_source) {
+    if (created && images != nullptr && num_slices == 1 && images[0] != nullptr) {
+        lv_img_set_src(images[0], image_source);
+    }
+}
+
+/**
+ * @brief Shows or hides a specific layer of the sprite stack.
+ */
+void SpriteStack::setLayerVisibility(int layer_index, bool visible) {
+    if (created && images != nullptr && layer_index < num_slices && images[layer_index] != nullptr) {
+        if (visible) {
+            lv_obj_clear_flag(images[layer_index], LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(images[layer_index], LV_OBJ_FLAG_HIDDEN);
+        }
+        dirty = true;
+    }
+}
+
+/**
+ * @brief Sets the image source for a specific layer of the sprite stack.
+ */
+void SpriteStack::setLayerImage(int layer_index, const lv_img_dsc_t* image_source) {
+    if (created && images != nullptr && layer_index < num_slices && images[layer_index] != nullptr) {
+        lv_img_set_src(images[layer_index], image_source);
+        dirty = true; // Mark for update
+    }
+}
+
 bool SpriteStack::isDirty() const {
     return dirty;
 }
@@ -229,8 +267,12 @@ void SpriteStack::update() {
 
     for (int j = 0; j < num_slices; j++) {
         if (!images[j]) continue;
-
-        int sprite_idx = (starting_index + j) % num_slices;
+        int sprite_idx = 0;
+        if(num_slices == 1){
+          sprite_idx = (starting_index + j);
+        }else{
+          sprite_idx = (starting_index + j) % num_slices;
+        }
         lv_obj_t* img = images[j];
         const lv_img_dsc_t* sprite_asset = sprite_set[sprite_idx];
 

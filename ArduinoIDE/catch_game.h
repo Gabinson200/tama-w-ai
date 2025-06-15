@@ -8,7 +8,7 @@
 
 // --- Constants & Definitions ---
 #define MAX_FALLING_OBJECTS 8
-#define MAX_CAUGHT 8
+#define MAX_CAUGHT 4
 
 // Structure for a falling object that uses a SpriteStack.
 struct FallingObject {
@@ -34,7 +34,7 @@ static void cleanupCatchingGame();
 extern Point g_spritePosition;         // Global position for the player sprite
 extern SpriteStack myStack;            // The player’s SpriteStack
 //extern const lv_img_dsc_t *cat_images[]; // Sprite image array
-extern const lv_img_dsc_t *ball_images[]; // Sprite image array
+extern const lv_img_dsc_t *burger_images[]; // Sprite image array
 extern lv_obj_t * mainScreen;
 extern bool inCatchingGame;
 extern int random_int(int min, int max);  // Our random_int function

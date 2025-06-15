@@ -75,6 +75,10 @@
         void setCameraDistance(float distance);
         float getCameraDistance() const;
 
+        void setSpriteImage(const lv_img_dsc_t* image_source);
+        void setLayerVisibility(int layer_index, bool visible);
+        void setLayerImage(int layer_index, const lv_img_dsc_t* image_source);
+        
         void update();
         bool isDirty() const;
 

@@ -84,9 +84,11 @@ void SpriteStack::create(lv_obj_t *parent) {
 }
 
 void SpriteStack::destroy() {
+    Serial.print("About to delete: "); 
     if(images) {
         for (int j = 0; j < num_slices; j++) {
             if(images[j]) {
+                Serial.println((uintptr_t)images[j], HEX);
                 lv_obj_del(images[j]);
                 images[j] = nullptr;
             }

@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <lvgl.h>
 #include "sprite_stack.h"
+#include "I2C_BM8563.h"           // RTC library
 
 // --- Constants & Definitions ---
 #define MAX_FALLING_OBJECTS 8
@@ -21,7 +22,7 @@ struct FallingObject {
 // --- Function Declarations ---
 
 // Creates and loads the catching game screen.
-void createCatchingGameScreen();
+void createCatchingGameScreen(I2C_BM8563 rtc);
 
 // Updates game logic (player movement, object falling, collision, etc.).
 void updateCatchingGame();
@@ -38,6 +39,6 @@ extern lv_obj_t * mainScreen;
 extern bool inCatchingGame;
 extern int random_int(int min, int max);  // Our random_int function
 // Also, our gradient function is declared here.
-void set_gradient_background(lv_obj_t *parent = NULL);
+//void set_gradient_background(lv_obj_t *parent = NULL, I2C_BM8563 rtc);
 
 #endif // CATCHING_GAME_H

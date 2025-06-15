@@ -5,6 +5,7 @@
 #include "touch.h"     // For validate_touch()
 #include <stdlib.h>
 #include <math.h>
+#include "background.h"
 
 // Define some game–specific constants.
 #define MAX_FALLING_OBJECTS 4
@@ -40,18 +41,21 @@ unsigned long gameStartTime = 0;
 // createCatchingGameScreen()
 //  Creates a new screen for the catching game and initializes the game state.
 //------------------------------------------------------------
-void createCatchingGameScreen() {
+void createCatchingGameScreen(I2C_BM8563 rtc) {
   // Create a new screen.
   gameScreen = lv_obj_create(NULL);
   lv_obj_remove_style_all(gameScreen);
   // Set a gradient background.
-  set_gradient_background(gameScreen);
+  set_gradient_background(gameScreen, rtc);
   
   // Use the global player SpriteStack and position.
+  // First, destroy its old LVGL objects from mainScreen
+  myStack.destroy();
   myStack.create(gameScreen);
   g_spritePosition.x = 120;
   g_spritePosition.y = 150;  // Draw the player sprite higher on the display.
   myStack.setPosition(g_spritePosition.x, g_spritePosition.y);
+  myStack.setRotation(0, 0, 0);
   myStack.setZoom(150);
   
   // Initialize falling objects.
@@ -110,7 +114,7 @@ void updateCatchingGame() {
       if (!fallingObjects[i].active) {
         int frame_int = random_int(0, sequenceLength-1); // random type and layer image
         fallingObjects[i].sprite = new SpriteStack(ball_images, 1, frame_int, 3.0, 1.0, 100.0f);
-        fallingObjects[i].sprite->create(lv_scr_act());
+        fallingObjects[i].sprite->create(gameScreen);
         fallingObjects[i].x = random_int(20, 220);
         fallingObjects[i].y = -20;
         fallingObjects[i].sprite->setPosition(fallingObjects[i].x, fallingObjects[i].y);
@@ -129,7 +133,7 @@ void updateCatchingGame() {
     if (fallingObjects[i].active) {
       fallingObjects[i].y += fallingObjects[i].speed;
       fallingObjects[i].sprite->setPosition(fallingObjects[i].x, fallingObjects[i].y);
-      
+      fallingObjects[i].sprite->update();
       // If the object falls off the bottom, delete it.
       if (fallingObjects[i].y > 240) {
         fallingObjects[i].active = false;
@@ -182,6 +186,7 @@ void updateCatchingGame() {
             caughtStack->create(lv_scr_act());
             caughtStack->setRotation(40, 0, 0);
             caughtStack->setPosition(120, 200);
+            caughtStack->update();
           }
         } else {
           Serial.print("Already caught object of type: ");
@@ -194,6 +199,7 @@ void updateCatchingGame() {
       }
     }
   }
+  myStack.update();
   
   // Check if all required types have been caught.
   if (caughtStackCount >= sequenceLength) {
@@ -243,15 +249,18 @@ static void cleanupCatchingGame() {
     // 4) Delete or clean up our gameScreen. 
     //    Using lv_obj_del() ensures it is removed from LVGL's hierarchy.
     if (gameScreen) {
-        //lv_obj_clean(gameScreen); // remove all children
-        //lv_obj_del(gameScreen);
-        //gameScreen = NULL;
+        lv_obj_clean(gameScreen); // remove all children
+        lv_obj_del(gameScreen);
+        gameScreen = NULL;
     }
 
     // 5) Load the original mainScreen from your .ino.
     //    (You declared 'lv_obj_t * mainScreen = NULL;' in the .ino)
     if (mainScreen != NULL) {
-        lv_scr_load_anim(mainScreen, LV_SCR_LOAD_ANIM_NONE, 0, 0, true);
+        //lv_scr_load_anim(mainScreen, LV_SCR_LOAD_ANIM_NONE, 0, 0, true);
+        myStack.destroy();
+        myStack.create(mainScreen); // Re-create the player on the main screen
+        lv_scr_load(mainScreen);
     }
 
     // 6) Mark the game as no longer active.

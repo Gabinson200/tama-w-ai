@@ -19,7 +19,7 @@ static inline lv_color_t interpolate_color(lv_color_t c1, lv_color_t c2, float t
   return lv_color_mix(c2, c1, mix);
 }
 
-void update_background(I2C_BM8563 rtc){
+void update_background(I2C_BM8563 &rtc){
   if(scene_ready){
     unsigned long now = millis();
     if (now - lastSceneUpdate >= SCENE_UPDATE_INTERVAL_MS) {
@@ -127,9 +127,14 @@ void create_scene(lv_obj_t* parent) {
   lv_obj_align(bottom_bg, LV_ALIGN_BOTTOM_LEFT, 0, 0);
   // needed to create bg so we can get sky height in update_background
 
+  //lv_obj_move_background(bottom_bg);        
+  //lv_obj_move_background(celestial_canvas); 
+  //lv_obj_move_background(top_bg);
+
   create_arcs(parent);
 
   lv_task_handler();
+  //lv_timer_handler();
   // negates the timer so it also runs once off-the-bat in the main loop
   lastSceneUpdate = millis() - SCENE_UPDATE_INTERVAL_MS - 100;
   scene_ready = true;     
@@ -234,4 +239,54 @@ void create_arcs(lv_obj_t *parent) {
     // Store arcs for timer
     static lv_obj_t *arcs[4] = {arc_hunger, arc_happiness_left, arc_happiness_right, arc_energy};
     lv_timer_create(timer_cb, SCENE_UPDATE_INTERVAL_MS, arcs);
+}
+
+
+void set_gradient_background(lv_obj_t *parent, I2C_BM8563 rtc) {
+  if (parent == NULL) parent = lv_scr_act();
+  lv_coord_t parent_w = lv_obj_get_width(parent);
+  lv_coord_t parent_h = lv_obj_get_height(parent);
+  if (parent_w == 0) parent_w = 240;
+  if (parent_h == 0) parent_h = 240;
+
+  // Determine if it's night based on RTC time.
+  I2C_BM8563_TimeTypeDef timeStruct;
+  rtc.getTime(&timeStruct);
+  bool isNight = (timeStruct.hours >= 18 || timeStruct.hours < 6);
+
+  isNight = true; // for testing
+
+  // Top (sky) background.
+  lv_obj_t * top_bg = lv_obj_create(parent);
+  lv_obj_remove_style_all(top_bg);
+  lv_obj_set_size(top_bg, parent_w, parent_h * 100 / 240);
+  lv_obj_align(top_bg, LV_ALIGN_TOP_LEFT, 0, 0);
+
+  if(isNight){
+    lv_obj_set_style_bg_color(top_bg, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_grad_color(top_bg, lv_color_hex(0x2F4F4F), 0);
+  }else{
+    lv_obj_set_style_bg_color(top_bg, lv_color_hex(0x4682B4), 0);
+    lv_obj_set_style_bg_grad_color(top_bg, lv_color_hex(0x87CEEB), 0);
+  }
+  lv_obj_set_style_bg_grad_dir(top_bg, LV_GRAD_DIR_VER, 0);
+  lv_obj_set_style_bg_opa(top_bg, LV_OPA_COVER, 0);
+  lv_obj_move_background(top_bg);
+
+  // Bottom (grass) background.
+  lv_obj_t * bottom_bg = lv_obj_create(parent);
+  lv_obj_remove_style_all(bottom_bg);
+  lv_obj_set_size(bottom_bg, parent_w, parent_h * 140 / 240);
+  lv_obj_align(bottom_bg, LV_ALIGN_TOP_LEFT, 0, parent_h * 100 / 240);
+
+  if(isNight){
+    lv_obj_set_style_bg_color(bottom_bg, lv_color_hex(0x2E8B57), 0);
+    lv_obj_set_style_bg_grad_color(bottom_bg, lv_color_hex(0x006400), 0);
+  }else{
+    lv_obj_set_style_bg_color(bottom_bg, lv_color_hex(0x3CB371), 0);
+    lv_obj_set_style_bg_grad_color(bottom_bg, lv_color_hex(0x98FB98), 0);
+  }
+  lv_obj_set_style_bg_grad_dir(bottom_bg, LV_GRAD_DIR_VER, 0);
+  lv_obj_set_style_bg_opa(bottom_bg, LV_OPA_COVER, 0);
+  lv_obj_move_background(bottom_bg);
 }

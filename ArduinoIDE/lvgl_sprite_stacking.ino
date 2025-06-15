@@ -527,49 +527,6 @@ void setup() {
                   lv_disp_get_ver_res(nullptr));
   lv_scr_load(mainScreen);
 
-  /*
-  // 3) Let LVGL run two timer handler calls so built‐in monitors (if any) appear
-  lv_timer_handler();
-  lv_timer_handler();
-
-  // 4) Dump the System Layer’s immediate children
-  Serial.println(F("─── System Layer Immediate Children ───"));
-  dump_children_of(lv_layer_sys());
-
-  // 5) (Optional) Dump the Active Screen’s immediate children
-  Serial.println(F("─── Active Screen Immediate Children ───"));
-  dump_children_of(lv_scr_act());
-
-  
-  // 6) Now proceed with the rest of setup (we’ll locate & reposition the labels next)
-  //    First: build a Montserrat 8 px style for shrinking.
-  lv_style_init(&small_font_style);
-  lv_style_set_text_font(&small_font_style, &lv_font_montserrat_8);
-
-  // 6) Find the two sysmon labels in lv_layer_sys()
-  {
-    lv_obj_t* sys_layer = lv_layer_sys();
-    uint32_t cnt = lv_obj_get_child_cnt(sys_layer);
-    for (uint32_t i = 0; i < cnt; i++) {
-      lv_obj_t* child = lv_obj_get_child(sys_layer, i);
-      if (!lv_obj_has_class(child, &lv_label_class)) continue;
-      const char* txt = lv_label_get_text(child);
-      if      (txt && strstr(txt, "FPS"))  fps_label = child;
-      else if (txt && (strstr(txt, "used") || strstr(txt, "kB"))) mem_label = child;
-      if (fps_label && mem_label) break;
-    }
-    if (!fps_label || !mem_label) {
-      Serial.println(F("Warning: Could not find one or both sysmon labels!"));
-    }
-  }
-
-  // 7) If found, create a 1 s LVGL timer to re-style/re-position them each tick
-  if (fps_label && mem_label) {
-    lv_timer_t * t = lv_timer_create(sysmon_relocator_cb, 1000, nullptr);
-    (void)t; // we don’t need to keep the handle
-    Serial.println(F("Sysmon relocator timer created."));
-  }
-  */
   // 1. Create a persistent style for the labels
   lv_style_init(&monitor_style);
   lv_style_set_text_font(&monitor_style, &lv_font_montserrat_8);
@@ -610,6 +567,17 @@ void setup() {
 void loop() {
     fps_counter++;
 
+    // If we are in the game, run the game logic and skip the pet logic.
+    
+    if (inCatchingGame) {
+        updateCatchingGame();
+        myStack.update(); 
+        lv_timer_handler(); // Make sure LVGL still runs
+        delay(2);
+        return; // Skip the rest of the pet simulation loop
+    }
+    
+
     unsigned long t_loop_start, t_touch, t_anim, t_step, t_zorder, t_stack_update, t_lvgl, t_loop_end;
     static unsigned long last_log_time = 0;
 
@@ -638,6 +606,14 @@ void loop() {
             //auto* a = SelectionAnimation(myStack, 0, 360, 3000, 0);
             // drop it if the queue is already full
             start_anim(&ballSelectAnim);
+            // Destroy menu items before starting
+            bedStack.destroy();
+            burgerStack.destroy();
+            ballStack.destroy();
+            show_items = false;
+            // Create and launch the game screen
+            createCatchingGameScreen(rtc);
+            Serial.println("created catching game");
           }
         }
         break;
@@ -716,10 +692,11 @@ void loop() {
     t_stack_update = millis();
 
     // this has some blocking issue
-    updateSpriteStackZOrder();
+    //updateSpriteStackZOrder();
     t_zorder = millis();
 
     lv_task_handler();
+    //lv_timer_handler();
     t_lvgl = millis();
 
     // Log durations periodically, e.g., every 1-2 seconds

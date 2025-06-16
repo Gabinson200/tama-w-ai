@@ -598,14 +598,7 @@ void loop() {
         if(show_items){
           if(is_stack_tapped(burgerStack, ev.x, ev.y)) {
             start_anim(&burgerSelectAnim);
-          }
-          if(is_stack_tapped(bedStack, ev.x, ev.y)) {
-            start_anim(&bedSelectAnim);
-          }
-          if(is_stack_tapped(ballStack, ev.x, ev.y)) {
-            //auto* a = SelectionAnimation(myStack, 0, 360, 3000, 0);
-            // drop it if the queue is already full
-            start_anim(&ballSelectAnim);
+            delay(3000);
             // Destroy menu items before starting
             bedStack.destroy();
             burgerStack.destroy();
@@ -614,6 +607,14 @@ void loop() {
             // Create and launch the game screen
             createCatchingGameScreen(rtc);
             Serial.println("created catching game");
+          }
+          if(is_stack_tapped(bedStack, ev.x, ev.y)) {
+            start_anim(&bedSelectAnim);
+          }
+          if(is_stack_tapped(ballStack, ev.x, ev.y)) {
+            //auto* a = SelectionAnimation(myStack, 0, 360, 3000, 0);
+            // drop it if the queue is already full
+            start_anim(&ballSelectAnim);
           }
         }
         break;

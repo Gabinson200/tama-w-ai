@@ -8,7 +8,6 @@
 
 // --- Constants & Definitions ---
 #define MAX_FALLING_OBJECTS 8
-#define MAX_CAUGHT 4
 
 // Structure for a falling object that uses a SpriteStack.
 struct FallingObject {

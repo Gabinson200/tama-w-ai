@@ -9,7 +9,6 @@
 
 // --- Game-specific constants ---
 #define MAX_FALLING_OBJECTS 8
-#define MAX_CAUGHT 4
 #define SEQUENCE_LENGTH 4 // Number of unique ingredients to catch
 
 // --- IMU init ---
@@ -31,7 +30,7 @@ static SpriteStack* fallingObjectSprites[MAX_FALLING_OBJECTS];
 
 // --- Efficient "Caught Item" Stack Management ---
 static SpriteStack* caughtStack = nullptr;
-static bool caughtTypes[SEQUENCE_LENGTH + 1];
+static bool caughtTypes[SEQUENCE_LENGTH + 2];
 static int caughtStackCount = 0;
 
 // Falling object spawn timing
@@ -86,7 +85,7 @@ void createCatchingGameScreen(I2C_BM8563 rtc) {
 
     static const lv_img_dsc_t* initial_burger_layers[SEQUENCE_LENGTH + 2];
     initial_burger_layers[0] = burger_images[0];
-    for(int i = 2; i <= SEQUENCE_LENGTH; ++i) {
+    for(int i = 1; i <= SEQUENCE_LENGTH; ++i) {
         initial_burger_layers[i] = burger_images[0]; // Placeholder image
     }
     initial_burger_layers[SEQUENCE_LENGTH + 1] = burger_images[7];
@@ -150,7 +149,7 @@ void updateCatchingGame() {
                 }
                 
                 lastFallingSpawnTime = now;
-                fallingSpawnInterval = random_int(2000, 4000);
+                fallingSpawnInterval = random_int(500, 3000);
                 break;
             }
         }

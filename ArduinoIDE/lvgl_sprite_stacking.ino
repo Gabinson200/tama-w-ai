@@ -71,6 +71,12 @@ Point burgerPosition = {80, 200};
 Point bedPosition = {180, 200};     
 Point ballPosition = {120, 200};
 
+static bool burgerTapped = false;
+static bool ballTapped = false;
+static bool bedTapped = false;
+static unsigned long burgerTapTime   = 0;
+static unsigned long ballTapTime   = 0;
+static unsigned long bedTapTime   = 0;
 bool inCatchingGame = false;
 
 I2C_BM8563 rtc(I2C_BM8563_DEFAULT_ADDRESS, Wire); 
@@ -598,15 +604,8 @@ void loop() {
         if(show_items){
           if(is_stack_tapped(burgerStack, ev.x, ev.y)) {
             start_anim(&burgerSelectAnim);
-            delay(3000);
-            // Destroy menu items before starting
-            bedStack.destroy();
-            burgerStack.destroy();
-            ballStack.destroy();
-            show_items = false;
-            // Create and launch the game screen
-            createCatchingGameScreen(rtc);
-            Serial.println("created catching game");
+            burgerTapTime = millis();
+            burgerTapped = true;
           }
           if(is_stack_tapped(bedStack, ev.x, ev.y)) {
             start_anim(&bedSelectAnim);
@@ -672,6 +671,18 @@ void loop() {
 
       default:
         break;
+    }
+
+    if(burgerTapped && millis() - burgerTapTime >= 3000){
+      // Destroy menu items before starting
+      bedStack.destroy();
+      burgerStack.destroy();
+      ballStack.destroy();
+      show_items = false;
+      burgerTapped = false;
+      // Create and launch the game screen
+      createCatchingGameScreen(rtc);
+      Serial.println("created catching game");
     }
 
 
